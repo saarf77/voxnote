@@ -1,0 +1,17 @@
+#!/bin/sh
+# Refuses a commit that adds any line containing a term from .private-terms
+# (gitignored; one term per line, case-insensitive, # for comments). Put there
+# whatever must never reach the repository: names of real contacts, a work
+# e-mail, an internal hostname. Enable once: git config core.hooksPath .githooks
+terms="$(git rev-parse --show-toplevel)/.private-terms"
+[ -f "$terms" ] || exit 0
+pat="$(grep -vE '^[[:space:]]*(#|$)' "$terms")"
+[ -n "$pat" ] || exit 0
+if git var GIT_AUTHOR_IDENT | grep -iFq -e "$pat"; then
+  echo "✋ the author identity matches .private-terms — fix user.name / user.email for this repository" >&2; exit 1
+fi
+hits="$(git diff --cached -U0 --no-color | grep -E '^\+' | grep -vE '^\+\+\+ ' | grep -iF -e "$pat")"
+if [ -n "$hits" ]; then
+  echo "✋ staged lines contain a term from .private-terms (use synthetic data instead):" >&2
+  echo "$hits" | cut -c1-160 >&2; exit 1
+fi

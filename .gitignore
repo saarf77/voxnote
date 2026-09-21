@@ -1,0 +1,7 @@
+node_modules/
+data/
+runtime/
+.env
+.DS_Store
+.wwebjs_cache/
+.private-terms

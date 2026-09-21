@@ -1,0 +1,9 @@
+node_modules
+data
+runtime
+.env
+.git
+deploy
+*.zip
+.DS_Store
+.wwebjs_cache
