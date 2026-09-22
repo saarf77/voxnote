@@ -147,3 +147,27 @@ test('the link page has no URL to keep and no invite; leaving is pointed at What
   assert.ok(!/Keep this page|Invite a friend/.test(html));
   assert.match(html, /write <b>leave<\/b>/);
 });
+
+test('link page: a phone defaults to a code, a desktop to the QR, and ?via= overrides', async () => {
+  const cookie = `rl=${t.id}.${t.manageKey}`;
+  const get = async (ua, q = '') => (await fetch(`${base}/link/${t.id}${q}`, { headers: { cookie, 'user-agent': ua } })).text();
+  const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1';
+  const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/128.0 Safari/537.36';
+  assert.match(await get(iphone), /let via='code'/); assert.match(await get(mac), /let via='qr'/);
+  assert.match(await get(iphone, '?via=qr'), /let via='qr'/); assert.match(await get(mac, '?via=code'), /let via='code'/);
+  assert.match(await get(mac, '?via=<script>'), /let via='qr'/, 'anything else is the default');
+});
+
+test('link with a code: the number is kept with the account; a bad one is refused; the QR can be chosen again', async () => {
+  const cookie = `rl=${t.id}.${t.manageKey}`;
+  const post = (path, body) => fetch(`${base}/link/${t.id}/${path}`, { method: 'POST', headers: { cookie, origin: base, 'content-type': 'application/x-www-form-urlencoded' }, body, redirect: 'manual' });
+  assert.equal((await post('code', 'phone=abc')).status, 400); assert.equal(t.pairPhone, '');
+  const ok = await post('code', 'phone=%2B972%2050-123%204567');
+  assert.equal(ok.status, 303); assert.equal(t.pairPhone, '972501234567');
+  const api = await (await fetch(`${base}/api/link/${t.id}`, { headers: { cookie } })).json();
+  assert.equal(api.pairByCode, true); assert.equal(api.pairingCode, null, 'no socket waiting for a scan yet: no code');
+  assert.ok(!JSON.stringify(api).includes('972501234567'), 'the number itself is not echoed');
+  const back = await post('qr', '');
+  assert.equal(back.status, 303); assert.equal(back.headers.get('location'), `/link/${t.id}?via=qr`); assert.equal(t.pairPhone, '');
+});
+

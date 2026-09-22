@@ -22,6 +22,7 @@ import { GLOBAL_DAILY_MINUTES, secondsToday } from './budget.js';
 import * as research from './research.js';
 import { dataDirIsMount } from './paths.js';
 import { LOGO_SVG, LOGO_DATA_URI } from './logo.js';
+import { normalizePhone } from './pairing.js';
 
 const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
 const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
@@ -162,6 +163,8 @@ select{padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 #box{display:flex;flex-direction:column;gap:14px;padding:12px 0 28px}#box .pill{align-self:flex-start}
 #box h1{font-size:56px;white-space:normal}#box p{color:var(--mute)}#box p.go{color:var(--ink)}
 .qr{display:block;width:100%;max-width:302px;margin:8px auto;border-radius:24px;background:#fff;padding:16px;border:1px solid var(--line)}
+.code{font-family:var(--mono);font-size:44px;font-weight:500;letter-spacing:.12em;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:22px 12px;margin:8px 0}.code i{font-style:normal;color:var(--mute);margin:0 4px}
+a.swap{display:inline-block;margin-top:8px;color:var(--mute);font-size:15px}#box form{display:flex;flex-direction:column;gap:12px;align-items:flex-start}#box form input{width:100%}
 .row{border-top:1px solid var(--line);padding:22px 0;display:flex;flex-direction:column;align-items:flex-start;gap:12px}.row form{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:12px}
 .after{display:none}.on .after{display:flex}
 code{font-family:var(--mono);font-size:13px;word-break:break-all}.row>code{display:block;width:100%;background:var(--chat);border-radius:12px;padding:12px 14px}
@@ -301,7 +304,7 @@ ${FOOT}`, { wide: true, nav: NAV }));
   app.get('/how', (_req, res) => res.type('html').send(page(res, `${PRODUCT_NAME} · How it works`, `
 <section class="howhero wrap"><h1>How it works.</h1><p class="sub">Set it up once. After that, everything happens inside WhatsApp.</p></section>
 <section class="band"><div class="wrap"><ol class="steps long">
-<li><div>Scan a QR code.<span>In WhatsApp: Settings, Linked devices, Link a device. Same as WhatsApp Web.</span></div></li>
+<li><div>Scan a QR code.<span>In WhatsApp: Settings, Linked devices, Link a device. Same as WhatsApp Web. On your phone, a code you type in instead.</span></div></li>
 <li><div>Send a voice note.<span>The text shows up under it. That&#39;s the whole setup.</span></div></li>
 <li><div>Get your ${NAME} group.<span>A new group with only you in it. It&#39;s your control panel.</span></div></li>
 </ol></div></section>
@@ -394,19 +397,34 @@ ${FOOT}`, { wide: true, nav: NAV })));
     const t = auth(req, res); if (!t) return;
     // A key in the URL becomes a cookie and disappears from the address bar.
     if (req.query.k != null) { setSession(req, res, t); return res.redirect(303, `/link/${t.id}`); }
+    // A phone cannot scan its own screen: there the default is a code, on a desktop the QR. Either page links to the other.
+    const onPhone = /Mobile|Android|iPhone|iPad|iPod/i.test(req.get('user-agent') || '');
+    const via = ['qr', 'code'].includes(req.query.via) ? req.query.via : onPhone ? 'code' : 'qr';
     res.type('html').send(page(res, `${PRODUCT_NAME} · Link your WhatsApp`, `
 <div id="box"><span class="pill"><i></i>Starting…</span></div>
+<form method="post" action="/link/${t.id}/qr" id="toqr" hidden></form>
 <div class="row after"><h3>Language</h3><form method="post" action="/link/${t.id}/language"><label for="lang">Leave it on auto unless it keeps guessing wrong.</label>${langSelect(t.language)}<button class="btn" type="submit">Save</button></form></div>
 <div class="row"><h3>Leave</h3><p class="muted">Logs ${esc(PRODUCT_NAME)} out of your WhatsApp and deletes everything about you here. You can do the same from WhatsApp at any time: write <b>leave</b> in your ${esc(PRODUCT_NAME)} group.</p><form method="post" action="/unlink/${t.id}" id="unlink"><button class="danger" type="submit">Unlink and erase</button></form></div>
 <a class="back" href="/privacy">Privacy &amp; terms</a>`, { poll: `
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const box=()=>document.getElementById('box');
+let via='${via}',shown='';
+const steps='In WhatsApp: <b>Settings</b>, then <b>Linked devices</b>, then <b>Link a device</b>';
+const swap=(to)=>'<a href="#" class="swap" data-to="'+to+'">'+(to==='qr'?'Scan a QR code instead':'Link with a code instead')+'</a>';
+document.addEventListener('click',e=>{const a=e.target.closest('a.swap');if(!a)return;e.preventDefault();if(a.dataset.to==='qr'&&document.body.dataset.code==='1'){document.getElementById('toqr').submit();return;}via=a.dataset.to;shown='';tick();});
 document.getElementById('unlink').addEventListener('submit',e=>{if(!confirm('Unlink WhatsApp and erase this account?'))e.preventDefault();});
-async function tick(){try{const r=await fetch('/api/link/${t.id}',{credentials:'same-origin'});if(r.ok){render(await r.json());}}catch(e){}setTimeout(tick,2500)}
+let timer=null;
+async function tick(){clearTimeout(timer);try{const r=await fetch('/api/link/${t.id}',{credentials:'same-origin'});if(r.ok){render(await r.json());}}catch(e){}timer=setTimeout(tick,2500)}
 function render(s){
  document.body.classList.toggle('on',s.mode==='connected');
+ document.body.dataset.code=s.pairByCode?'1':'';
+ // The same picture is not redrawn: a number being typed must survive the next poll.
+ const key=[s.mode,s.pairByCode,s.pairingCode,via==='qr'&&!s.pairByCode&&s.qr?s.qr.slice(-40):'',via,s.controlGroup,s.needsManualGroup].join('|');if(key===shown)return;shown=key;
  if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1>'+(s.controlGroup?'<p>A group called <b>'+esc(s.controlGroup)+'</b> is now in your WhatsApp. Only you are in it. Open it.</p>':(s.needsManualGroup?'<p>Create a WhatsApp group with just you in it and post <code>#transcribe</code> there. That becomes your control group.</p>':'<p>Setting up your control group…</p>'))+'<p class="go">Then send someone a voice note.</p>';}
- else if(s.qr){box().innerHTML='<h1>Scan this.</h1><p>In WhatsApp: <b>Settings</b>, then <b>Linked devices</b>, then <b>Link a device</b>.</p><img class="qr" src="'+esc(s.qr)+'" alt="QR code"><p class="muted center">The code refreshes on its own.</p>';}
+ else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>Enter this code.</h1><p>'+steps+', then <b>Link with phone number instead</b>.</p><div class="code">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</div><p class="muted">It&#39;s good for a few minutes; when it expires a fresh one appears here on its own.</p>'+swap('qr');}
+ else if(s.mode==='qr'&&s.pairByCode){box().innerHTML='<span class="pill"><i></i>Getting you a code…</span>'+swap('qr');}
+ else if(s.mode==='qr'&&via==='code'){box().innerHTML='<h1>Link with a code.</h1><form method="post" action="/link/${t.id}/code"><label for="phone">Your WhatsApp number, with the country code</label><input type="tel" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="972 50 123 4567" required><button class="btn" type="submit">Get a code</button></form>'+swap('qr');}
+ else if(s.qr){box().innerHTML='<h1>Scan this.</h1><p>'+steps+'.</p><img class="qr" src="'+esc(s.qr)+'" alt="QR code"><p class="muted center">The code refreshes on its own.</p>'+swap('code');}
  else if(s.mode==='logged_out'){box().innerHTML='<span class="pill"><i></i>Logged out</span><p>WhatsApp logged this device out. A new code is coming…</p>';}
  else{box().innerHTML='<span class="pill"><i></i>'+(s.mode==='reconnecting'?'Reconnecting…':'Preparing your code…')+'</span>';}
 }
@@ -414,6 +432,19 @@ tick();` }));
   });
 
   app.get('/api/link/:id', (req, res) => { const t = auth(req, res); if (t) res.json(t.status({ full: true })); });
+
+  // Link with a code: the number stays with the account until it is linked or the QR is chosen again.
+  app.post('/link/:id/code', async (req, res) => {
+    const t = auth(req, res); if (!t) return;
+    if (!normalizePhone(req.body.phone)) return res.status(400).type('html').send(page(res, 'Not a number', `<h1 class="small">That doesn&#39;t look like a number.</h1><p>Write it with the country code and nothing else: <b>972501234567</b> for an Israeli number, for instance.</p><a class="back" href="/link/${t.id}">Back</a>`));
+    await t.requestPairingCode(req.body.phone);
+    res.redirect(303, `/link/${t.id}`);
+  });
+  app.post('/link/:id/qr', (req, res) => {
+    const t = auth(req, res); if (!t) return;
+    t.usePairingQr();
+    res.redirect(303, `/link/${t.id}?via=qr`);
+  });
 
   app.post('/link/:id/language', (req, res) => {
     const t = auth(req, res); if (!t) return;

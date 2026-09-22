@@ -29,6 +29,8 @@ import { summarizeTranscript } from './summarize.js';
 import { createGlossary } from './glossary.js';
 import * as research from './research.js';
 import * as claims from './claims.js';
+import { normalizePhone } from './pairing.js';
+import { LOGO_MARK_SVG } from './logo.js';
 import { extractDictation, matchContacts, looksLikeDictation } from './dictate.js';
 
 // Bounded work: at most this many recordings in flight per account, and across
@@ -150,6 +152,7 @@ export class Tenant {
 
     this.link = null; this.sock = null; this.ownId = null; this.ownLid = null;
     this.mode = 'starting'; this.qr = null; this.ready = false;
+    this.pairPhone = ''; this.pairingCode = null; // link with a code instead of a scan: the number, and the code in force
     this.lastMessageAt = 0; this.lastError = null; this.needsManualGroup = false;
     this.stats = { transcribed: 0, dropped: 0, failed: 0 };
     this.sendChain = Promise.resolve();
@@ -165,9 +168,12 @@ export class Tenant {
   async start() {
     this.link = createLink({
       dir: this.dir, tag: this.tag,
-      onQr: async (qr) => { this.ready = false; this.mode = 'qr'; this.qr = await QRCode.toDataURL(qr, { margin: 1, width: 320 }); },
+      onQr: async (qr) => {
+        this.ready = false; this.mode = 'qr'; this.qr = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
+        if (this.pairPhone && !this.pairingCode) await this.issuePairingCode(); // a new socket: the old code died with the last one
+      },
       onReady: (sock) => this.onReady(sock),
-      onClose: () => { this.ready = false; if (this.mode === 'connected') this.mode = 'reconnecting'; },
+      onClose: () => { this.ready = false; this.qr = null; this.pairingCode = null; if (this.mode === 'connected') this.mode = 'reconnecting'; },
       onLoggedOut: () => { this.mode = 'logged_out'; this.ready = false; },
       onMessage: (m, sock) => this.onMessage(m, sock),
       onChats: (chats) => this.onChats(chats),
@@ -193,8 +199,34 @@ export class Tenant {
     this.ownLid = sock.user?.lid ? jidNormalizedUser(sock.user.lid) : null;
     this.ready = true; this.qr = null; this.mode = 'connected';
     if (!this.linkedAt) { this.linkedAt = Date.now(); this.persistRecord(); this.onFirstLink?.(this); }
+    this.pairPhone = ''; this.pairingCode = null;
     console.log(`${this.tag} ✅ connected as ${this.ownId?.replace(/^(\d{5})\d+/, '$1…')}${this.target ? ' · control group set' : ' · no control group yet'}`);
     if (!this.target) await this.createControlGroup();
+    else if (!this.target.icon) await this.setGroupIcon(); // groups made before the icon existed
+  }
+
+  /** Link with a code: remember the number, and ask for a code now if a socket is waiting for a scan. */
+  async requestPairingCode(phone) {
+    const digits = normalizePhone(phone);
+    if (!digits) return false;
+    this.pairPhone = digits; this.pairingCode = null;
+    if (this.mode === 'qr' && this.link?.sock) await this.issuePairingCode();
+    return true;
+  }
+  usePairingQr() { this.pairPhone = ''; this.pairingCode = null; }
+  async issuePairingCode() {
+    try { this.pairingCode = await this.link.requestPairingCode(this.pairPhone); console.log(`${this.tag} 🔢 pairing code issued`); }
+    catch (e) { console.warn(`${this.tag} pairing code failed: ${firstLine(e)}`); }
+  }
+
+  /** The control group wears the logo. Best effort, once. */
+  async setGroupIcon() {
+    if (!this.target || !this.sock) return;
+    try {
+      await Promise.race([this.sock.updateProfilePicture(this.target.jid, Buffer.from(LOGO_MARK_SVG)), new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), 30000))]);
+      this.target.icon = Date.now(); saveJson(this.f('target.json'), this.target);
+      console.log(`${this.tag} 🖼️ control group icon set`);
+    } catch (e) { console.warn(`${this.tag} could not set the group icon: ${firstLine(e)}`); }
   }
 
   /** First link: create the control group with just the owner in it and post the welcome. */
@@ -206,6 +238,7 @@ export class Tenant {
       saveJson(this.f('target.json'), this.target);
       this.needsManualGroup = false;
       console.log(`${this.tag} 🎯 control group created`);
+      await this.setGroupIcon();
       await this.sendPaced(g.id, { text: this.welcomeText() });
     } catch (e) {
       this.needsManualGroup = true;
@@ -842,6 +875,7 @@ Each one is a single word.
       this.target = { jid: n.chatId, name: String(chatName || PRODUCT_NAME).slice(0, 80), setAt: Date.now() };
       saveJson(this.f('target.json'), this.target); this.needsManualGroup = false;
       await this.sendPaced(n.chatId, { text: this.welcomeText() }).catch(() => {});
+      await this.setGroupIcon();
       return true;
     }
     if (inControl && n.fromMe && !n.hasMedia && lower === 'help' && !this.ownPosts.has(n.id)) {
@@ -906,6 +940,6 @@ Each one is a single word.
       inviteCode: this.inviteCode, invited: this.invited, dailyMinutes: this.dailyCapMinutes(), bonusMinutes: this.bonusMinutes,
     };
     if (history) base.usageHistory = this.usageHistory;
-    return full ? { ...base, qr: this.qr, product: PRODUCT_NAME } : base;
+    return full ? { ...base, qr: this.qr, pairingCode: this.pairingCode, pairByCode: !!this.pairPhone, product: PRODUCT_NAME } : base;
   }
 }

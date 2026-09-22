@@ -1,5 +1,6 @@
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import pino from 'pino';
+import { attach as attachPairing } from './pairing.js';
 import { rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -48,14 +49,15 @@ export function createLink(cb) {
       markOnlineOnConnect: false, // stay invisible: the phone keeps its notifications
       syncFullHistory: false,     // live messages only
       browser: Browsers.ubuntu('Chrome'), // a stock WhatsApp Web session, nothing unusual
+      qrTimeout: 45000, // each QR (and so a pairing code) lives 45s; a socket offers six before it starts over
     });
     const s = sock;
+    attachPairing(s, { tag, onQr: (qr) => cb.onQr?.(qr) });
 
     s.ev.on('creds.update', saveCreds);
 
     s.ev.on('connection.update', async (u) => {
-      const { connection, lastDisconnect, qr } = u;
-      if (qr) cb.onQr?.(qr);
+      const { connection, lastDisconnect } = u;
       if (connection === 'open') {
         reconnectAttempts = 0;
         cb.onReady?.(s);
@@ -77,9 +79,11 @@ export function createLink(cb) {
           cb.onLoggedOut?.();
         }
         if (reconnectTimer) return;
-        const delay = Math.min(30000, 2000 * 2 ** reconnectAttempts);
-        reconnectAttempts++;
-        console.warn(`${tag} ↻ connection closed (${code}); reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts})`);
+        // An unpaired socket closes on its own when its QRs run out: not a failure, so no backoff.
+        const poolRanOut = code === DisconnectReason.timedOut && !state.creds.registered;
+        const delay = poolRanOut ? 2000 : Math.min(30000, 2000 * 2 ** reconnectAttempts);
+        if (!poolRanOut) reconnectAttempts++;
+        console.warn(`${tag} ↻ connection closed (${code}${poolRanOut ? ', QR pool used up' : ''}); reconnecting in ${Math.round(delay / 1000)}s${poolRanOut ? '' : ` (attempt ${reconnectAttempts})`}`);
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           start().catch((e) => console.error(`${tag} reconnect failed:`, e.message));
@@ -115,5 +119,8 @@ export function createLink(cb) {
     return out.finally(() => { try { s.end?.(); } catch { /* ignore */ } });
   }
 
-  return { start, stop, get sock() { return sock; } };
+  /** A pairing code for this phone number, valid for the current socket (the QR keeps working too). */
+  const requestPairingCode = (phone) => { if (!sock) throw new Error('not connected'); return sock.requestPairingCode(phone); };
+
+  return { start, stop, requestPairingCode, get sock() { return sock; } };
 }

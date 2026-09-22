@@ -18,7 +18,8 @@ into WhatsApp as you.
 
 ## Using the hosted service
 
-Open the link, scan the QR with **WhatsApp → Settings → Linked devices → Link a
+Open the link and scan the QR (or, on the phone itself, get a code to type in under
+**Link with phone number instead**) with **WhatsApp → Settings → Linked devices → Link a
 device**, done. Any language; the speech model detects it (the private link page
 has a language setting for the rare case it's needed). Ramble creates a group named *Ramble*
 in your WhatsApp (only you in it) — that's your control panel, and its first
