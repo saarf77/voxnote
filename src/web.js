@@ -442,6 +442,7 @@ tick();` }));
     }
     if (ok) return next();
     adminFailLimiter.hit(req.ip);
+    console.warn(`🔐 admin sign-in failed from ${req.ip} (${String(req.get('x-forwarded-for') || '').split(',').length} forwarded hop(s))`);
     res.set('WWW-Authenticate', `Basic realm="${PRODUCT_NAME} admin"`); res.status(401).send('Authentication required');
   }
   const overview = () => {

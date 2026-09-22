@@ -74,6 +74,30 @@ function extractAudio(videoPath) {
   });
 }
 
+/**
+ * How long the recording really is, in seconds, by decoding its audio track. The length a
+ * message declares is written by the sender's client and can say anything; the quota and
+ * the per-recording limit must be held against the audio itself. Decoding stops just past
+ * `limitSeconds`, so an over-long file costs no more than a limit-long one.
+ * Returns null when ffmpeg could not tell (not installed, not decodable, timed out).
+ */
+export function measureSeconds(absPath, { limitSeconds = MAX_AUDIO_SECONDS, timeoutMs = FFMPEG_TIMEOUT_MS } = {}) {
+  return new Promise((resolve) => {
+    const ff = spawn(ffmpegBin(), ['-nostdin', '-hide_banner', '-protocol_whitelist', 'file', '-i', absPath, '-vn', '-t', String(limitSeconds + 1), '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let tail = '';
+    ff.stderr.on('data', (c) => { tail = (tail + c).slice(-4000); });
+    const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch { /* gone */ } }, timeoutMs);
+    const done = (ok) => {
+      clearTimeout(timer);
+      const times = ok ? [...tail.matchAll(/time=(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/g)] : [];
+      const last = times[times.length - 1];
+      resolve(last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : null);
+    };
+    ff.on('error', () => done(false));
+    ff.on('close', (code) => done(code === 0));
+  });
+}
+
 // Never throws: returns the file to transcribe, plus a cleanup.
 async function prepareAudio(absPath, isVideo) {
   if (!isVideo) return { path: absPath, cleanup: () => {} };

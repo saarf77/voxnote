@@ -15,13 +15,13 @@
  *     texted to Eden, as the owner, only after the owner replies yes
  */
 import QRCode from 'qrcode';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { jidNormalizedUser } from '@whiskeysockets/baileys';
 import { createLink } from './wa.js';
 import { saveMedia, deleteMediaFile, sweepMediaDir, MAX_MEDIA_SECONDS } from './media.js';
 import { createSemaphore } from './semaphore.js';
-import { transcribeRun, transcribeEnabled, planEnabled, planLabel, PLANS } from './transcribe.js';
+import { transcribeRun, measureSeconds, transcribeEnabled, planEnabled, planLabel, PLANS } from './transcribe.js';
 import * as budget from './budget.js';
 import { checkTranscript } from './sanity.js';
 import { rewriteMessage } from './rewrite.js';
@@ -368,7 +368,7 @@ Each one is a single word.
     }
     return this.usage.seconds;
   }
-  addUsage(seconds) { this.usageSecondsToday(); this.usage.seconds += seconds; saveJson(this.f('usage.json'), this.usage); }
+  addUsage(seconds) { this.usageSecondsToday(); this.usage.seconds = Math.max(0, this.usage.seconds + seconds); saveJson(this.f('usage.json'), this.usage); }
   /** Atomically reserve `seconds` against today's cap: false if it would not fit. */
   reserveUsage(seconds) {
     const used = this.usageSecondsToday();
@@ -515,10 +515,41 @@ Each one is a single word.
       const media = await saveMedia(n.mediaNode, isVideo ? 'video' : 'audio', n.id, this.mediaDir, { signal: this.abort.signal });
       if (!media) return;
       if (this.stopped) { deleteMediaFile(media); return; } // checkpoint: nothing leaves the box after stop()
+      if (!await this.holdToRealLength(n, media, sec, isVideo)) { deleteMediaFile(media); return; }
       return this.transcribeAndDeliver(m, n, chatName, media, isVideo, inControl);
     }));
     this.inFlight.add(job);
     try { return await job; } finally { this.inFlight.delete(job); }
+  }
+
+  /**
+   * The length in the message is the sender's word, and a crafted client can call an hour of
+   * audio one second. Before anything is uploaded the file itself is measured, and the
+   * per-recording limit and both budgets are held against that. False = not to be transcribed.
+   */
+  async holdToRealLength(n, media, reserved, isVideo = false, measure = measureSeconds) {
+    const limit = MAX_TRANSCRIBE_SECONDS || MAX_MEDIA_SECONDS;
+    let real = await measure(media.absPath, { limitSeconds: limit });
+    const giveBack = () => { budget.refund(reserved); this.addUsage(-reserved); };
+    if (real == null) {
+      // ffmpeg could not tell. A video it cannot read is not sent anywhere; for audio the file's
+      // size still bounds the length (a voice note is 16 kbit/s or more, 2000 bytes a second).
+      if (isVideo) { giveBack(); console.warn(`${this.tag} ⏭️ skipped a video whose length could not be measured`); return false; }
+      let bytes = 0; try { bytes = statSync(media.absPath).size; } catch { /* gone */ }
+      real = Math.max(n.seconds, bytes / 2000);
+    }
+    real = Math.ceil(real);
+    if (MAX_TRANSCRIBE_SECONDS > 0 && real > MAX_TRANSCRIBE_SECONDS) {
+      giveBack();
+      console.log(`${this.tag} ⏭️ skipped a recording that is really over the ${MAX_TRANSCRIBE_SECONDS}s limit (it declared ${n.seconds}s)`);
+      return false;
+    }
+    const extra = real - reserved;
+    if (extra <= 5) return true; // what was reserved covers it
+    if (!budget.reserve(extra)) { giveBack(); console.warn(`${this.tag} ⏸️ server daily audio budget reached — skipped`); return false; }
+    if (!this.reserveUsage(extra)) { budget.refund(extra); giveBack(); console.log(`${this.tag} ⏸️ over daily cap, skipped`); return false; }
+    n.seconds = real; // the sanity check and the logs work with the true length
+    return true;
   }
 
   async transcribeAndDeliver(m, n, chatName, media, isVideo, inControl) {
@@ -640,6 +671,9 @@ Each one is a single word.
    * the model cannot tell, it is treated as a probe like before.
    */
   async handleControlNote(n, content, body, isVideo, original) {
+    // Only the owner's own voice can dictate or answer: should anyone else ever be in this group,
+    // their recordings are transcribed like any forwarded one and nothing more.
+    if (!n.fromMe) { this.deliverProbe(n, body, isVideo, original); return; }
     const traceable = !!(n.mediaSha && this.mediaSrc.has(n.mediaSha));
     // A question of ours is open and the owner answered it out loud ("yes", "כן", "שתיים").
     if (!traceable && !n.forwarded && n.isVoice && this.pendingSend && await this.handleDictationReply(original, n, spokenAnswer(content))) return;

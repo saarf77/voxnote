@@ -138,3 +138,41 @@ test('usage history: when the day rolls over, yesterday\'s minutes are kept (min
   assert.deepEqual(t.status({ history: true }).usageHistory.at(-1), { day: '2026-01-01', minutes: 10 });
   assert.equal(t.status({ full: true }).usageHistory, undefined, 'the link page API does not get it');
 });
+
+// ---- the length a message declares is the sender's word ----
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import ffmpegStatic from 'ffmpeg-static';
+import { measureSeconds } from '../src/transcribe.js';
+import * as serverBudget from '../src/budget.js';
+
+test('a recording is measured, not believed: the quota follows the real length and an over-long file is refused', async () => {
+  const file = join(process.env.DATA_DIR, 'tone.mp3');
+  const made = spawnSync(ffmpegStatic && existsSync(ffmpegStatic) ? ffmpegStatic : 'ffmpeg', ['-nostdin', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=20', '-ac', '1', '-b:a', '32k', file], { stdio: 'ignore' });
+  assert.equal(made.status, 0, 'ffmpeg is needed for this test');
+  const real = await measureSeconds(file);
+  assert.ok(real > 19 && real < 21, `measured ${real}s`);
+  assert.equal(await measureSeconds(join(process.env.DATA_DIR, 'nothing-here.mp3')), null);
+
+  const t = new Tenant({ id: 'len', createdAt: Date.now(), manageKey: 'k'.repeat(32) }, join(process.env.DATA_DIR, 'len')); serverBudget.__reset();
+  // It declared one second; one second was reserved. The other nineteen are charged before any upload.
+  serverBudget.reserve(1); t.reserveUsage(1);
+  const before = t.usageSecondsToday();
+  const n = { seconds: 1 };
+  assert.equal(await t.holdToRealLength(n, { absPath: file }, 1), true);
+  assert.ok(t.usageSecondsToday() - before >= 19); assert.ok(serverBudget.secondsToday() >= 20); assert.ok(n.seconds >= 20);
+  // Really an hour: refused, and what it had reserved is given back.
+  const used = t.usageSecondsToday(), server = serverBudget.secondsToday();
+  serverBudget.reserve(1); t.reserveUsage(1);
+  assert.equal(await t.holdToRealLength({ seconds: 1 }, { absPath: file }, 1, false, async () => 3600), false);
+  assert.equal(t.usageSecondsToday(), used); assert.equal(serverBudget.secondsToday(), server);
+  // Unmeasurable audio is bounded by its size; an unmeasurable video goes nowhere.
+  assert.equal(await t.holdToRealLength({ seconds: 1 }, { absPath: file }, 0, true, async () => null), false);
+});
+
+test('only the owner\'s own voice can dictate in the control group', async () => {
+  const t = tenant(); let probed = 0, asked = 0;
+  t.deliverProbe = () => { probed++; }; t.dictationFor = async () => { asked++; return { to: 'Dana', text: 'hi' }; }; t.dictate = async () => { asked++; };
+  await t.handleControlNote({ fromMe: false, isVoice: true, forwarded: false }, 'send Dana that I am late', 'body', false, {});
+  assert.equal(probed, 1); assert.equal(asked, 0);
+});

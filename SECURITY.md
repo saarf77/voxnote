@@ -30,9 +30,10 @@ please give a reasonable window to fix before publishing.
 - Set `ADMIN_PASSWORD` (long); without it `/admin` is disabled. Admin also has
   a per-IP lockout after 10 failed attempts. Consider `INVITE_CODE` for a
   closed beta.
-- Set `TRUST_PROXY` to the number of proxy hops in front of the app (default 1,
-  right for Railway and most PaaS; `0` if exposed directly) so rate limits see
-  real client addresses.
+- Set `TRUST_PROXY` to the number of proxy hops in front of the app (default 1;
+  `2` on Railway, whose edge adds a hop; `0` if exposed directly) so rate limits
+  see real client addresses. Verify it: a failed `/admin` sign-in logs the address
+  it was counted against, which must be the visitor's and not the proxy's.
 - Logs never contain message text, transcripts or names — only counts,
   durations and error codes — but your hosting provider's log retention is
   yours to configure.
