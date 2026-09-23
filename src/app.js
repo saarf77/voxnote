@@ -1,6 +1,7 @@
 /**
  * Entry point: load every linked account, start them, serve the site.
  */
+import './logguard.js'; // first: nothing may print session keys, from the first line on
 import { dictateEnabled } from './dictate.js';
 import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';

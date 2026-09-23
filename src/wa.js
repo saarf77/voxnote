@@ -1,3 +1,4 @@
+import './logguard.js'; // the Signal library logs session keys to the console directly
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { attach as attachPairing } from './pairing.js';
