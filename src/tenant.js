@@ -127,6 +127,7 @@ export class Tenant {
       // Opt-in, off for everyone unless the owner asked for it: keep a copy of
       // each recording with what the models made of it, to improve the product.
       keepAudio: rec.keepAudio === true,
+      paused: rec.paused === true, // the owner wrote "pause": nothing is transcribed until "resume"
       // Who this account is, for the admin page: the linked number and the owner's WhatsApp name.
       phone: /^\d{6,15}$/.test(rec.phone || '') ? rec.phone : '', waName: String(rec.waName || '').slice(0, 80),
     });
@@ -299,6 +300,7 @@ Recordings are deleted the moment they become text.
 • הפעלה וכיבוי של צ'אט, *on* / *off*: להעביר לכאן הודעה קולית מהצ'אט, ולענות לטקסט שלה *on* או *off*. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
 • שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
+• עצירה והמשך, *pause* / *resume*: לכתוב כאן כדי לעצור את כל התמלולים, ולהמשיך מתי שרוצים.
 • התנתקות, *leave*: לכתוב כאן כדי לנתק את ${PRODUCT_NAME} ולמחוק את החשבון. נשאלת קודם שאלה, ועונים לה *yes* או *no*.
 • הרשימה הזו: *help*.`;
     return `*${PRODUCT_NAME} commands*
@@ -307,8 +309,21 @@ Each one is a single word.
 • *on* / *off*: forward a voice note from any chat to here, then reply *on* or *off* to its text to switch that chat. Groups start off, private chats start on.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
 • *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
+• *pause* / *resume*: write it here to stop all transcription for a while, and to start again.
 • *leave*: write it here to unlink ${PRODUCT_NAME} and erase your account. It asks first; answer *yes* or *no*.
 • *help*: this list.`;
+  }
+
+  pauseReply(how) {
+    const he = this.ownerLocale() === 'he';
+    const t = {
+      paused: ['⏸️ Paused. Nothing is transcribed until you write *resume* here.', '⏸️ מושהה. שום הקלטה לא מתומללת עד שכותבים כאן *resume*.'],
+      resumed: ['▶️ Back on. Voice notes get their text again.', '▶️ חוזרים לפעול. הודעות קוליות מקבלות שוב טקסט.'],
+      'already-paused': ['⏸️ Already paused. Write *resume* to start again.', '⏸️ כבר מושהה. כדי להמשיך, לכתוב כאן *resume*.'],
+      'already-running': ["▶️ It's running. Write *pause* to stop it for a while.", '▶️ הכול פועל. כדי לעצור לזמן מה, לכתוב כאן *pause*.'],
+      'paused-note': ['⏸️ Paused, so this was not transcribed. Write *resume* to start again.', '⏸️ מושהה, ולכן ההקלטה הזו לא תומללה. כדי להמשיך, לכתוב כאן *resume*.'],
+    }[how];
+    return t[he ? 1 : 0];
   }
 
   /** Answer "language" (show it) or "language <name>" (set it). */
@@ -332,7 +347,7 @@ Each one is a single word.
   }
 
   // ---------- state persistence ----------
-  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, phone: this.phone, waName: this.waName }); }
+  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, paused: this.paused, phone: this.phone, waName: this.waName }); }
 
   /** Today's ceiling for this account: the server default plus whatever invites earned. */
   dailyCapMinutes() { return DAILY_MINUTES_CAP > 0 ? DAILY_MINUTES_CAP + this.bonusMinutes : 0; }
@@ -508,6 +523,11 @@ Each one is a single word.
     else if (n.isGroup) want = this.enabled.has(n.chatId) && !this.archived.has(n.chatId);
     else want = !this.muted.has(n.chatId) && !this.archived.has(n.chatId);
     if (!want) return;
+    // Paused by the owner: nothing is transcribed, nowhere. A recording in the group gets a reminder.
+    if (this.paused) {
+      if (inControl && n.fromMe) this.sendPaced(n.chatId, { text: this.pauseReply('paused-note') }, { quoted: m }).catch(() => {});
+      return;
+    }
 
     // One recording, one text: the control group is ours alone, everywhere else another
     // account on this server may be looking at the very same message.
@@ -917,6 +937,14 @@ Each one is a single word.
       await this.sendPaced(n.chatId, { text: this.languageReply(lang[1]) }, { quoted: m }).catch(() => {});
       return true;
     }
+    // pause / resume: stop transcribing for a while, and start again.
+    if (inControl && n.fromMe && !n.hasMedia && (lower === 'pause' || lower === 'resume') && !this.ownPosts.has(n.id)) {
+      const want = lower === 'pause';
+      const how = want === this.paused ? (want ? 'already-paused' : 'already-running') : (want ? 'paused' : 'resumed');
+      if (want !== this.paused) { this.paused = want; this.persistRecord(); console.log(`${this.tag} ${want ? '⏸️ paused' : '▶️ resumed'} by the owner`); }
+      await this.sendPaced(n.chatId, { text: this.pauseReply(how) }, { quoted: m }).catch(() => {});
+      return true;
+    }
     // leave, then yes: unlink and erase, from inside WhatsApp.
     if (inControl && n.fromMe && !n.hasMedia && await this.handleLeave(m, n, lower)) return true;
     // A dictated message waiting for a recipient, or one to take back.
@@ -968,7 +996,7 @@ Each one is a single word.
   status({ full = false, history = false } = {}) {
     const base = {
       id: this.id, label: this.label, language: this.language || 'auto', createdAt: this.createdAt, linkedAt: this.linkedAt || null,
-      plan: this.plan, model: planLabel(this.plan), abModel: this.abModel || null, keepAudio: this.keepAudio,
+      plan: this.plan, model: planLabel(this.plan), abModel: this.abModel || null, keepAudio: this.keepAudio, paused: this.paused,
       mode: this.mode, ready: this.ready, controlGroup: this.target?.name || null, needsManualGroup: this.needsManualGroup,
       enabledGroups: this.enabled.size, mutedChats: this.muted.size, minutesToday: Math.round(this.usageSecondsToday() / 60),
       lastMessageAt: this.lastMessageAt || null, stats: this.stats, lastError: this.lastError,

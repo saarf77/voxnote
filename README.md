@@ -32,6 +32,7 @@ message explains everything:
 | Reply `delete` to anything Ramble posted | deletes it for everyone |
 | Write `leave` in the *Ramble* group, then `yes` | unlinks the device and erases your account |
 | Write `help` in the *Ramble* group | the list of commands |
+| Write `pause` / `resume` in the *Ramble* group | stops all transcription for a while / starts it again |
 | Write `language` in the *Ramble* group; `language hebrew` (or `auto`) | shows / pins the transcription language |
 | In *Notes to self*: `names: David, Eden` | teaches the spelling of names (`names` lists, `names -X` removes) |
 | Record a voice note *in* the *Ramble* group: "send Eden that I'm on my way" | finds Eden in your contacts and shows who and what; reply `yes` (or a number, if several match) and it texts her, as you. Nothing is sent without your yes. Reply `undo` to a sent one to delete it |
@@ -41,7 +42,7 @@ one text: the sender's account posts it, and the recipient's steps in only if th
 sender's cannot (chat off, daily limit, a failure).
 
 Every command is one English word (`on`, `off`, `delete`, `yes`, `no`, `undo`,
-`leave`, `help`, `language`, `names`): no synonyms and no translations, so it is never a question
+`leave`, `help`, `language`, `pause`, `resume`, `names`): no synonyms and no translations, so it is never a question
 which to write. A *spoken* answer to a question may be a Hebrew yes/no or a number word.
 
 To stop using it, write `leave` in the *Ramble* group and confirm with `yes`: the
