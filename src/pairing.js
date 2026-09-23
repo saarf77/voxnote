@@ -8,7 +8,8 @@
  * 7.0.0-rc14 ignores the notification, keeps rotating QRs signed with the old
  * secret, and the phone says "couldn't link, check your connection". So every
  * QR passes through here and always carries the *current* secret, and the
- * notification rotates it. (WhiskeySockets/Baileys#2737, PR #2765.)
+ * notification rotates it and is acknowledged, as WhatsApp Web does.
+ * (WhiskeySockets/Baileys#2737, PRs #2765 and #2749.)
  *
  * Pure parts are exported for tests; attach() wires a socket.
  */
@@ -34,10 +35,17 @@ export function attach(sock, { onQr, tag = '', log = console.log } = {}) {
   const show = (qr) => { lastQr = withAdvSecret(qr, sock.authState.creds.advSecretKey); onQr?.(lastQr); };
   sock.ev.on('connection.update', (u) => { if (u.qr) show(u.qr); });
   sock.ws.on('CB:iq,type:set,pair-device', () => log(`${tag} 🔗 pairing offered — waiting for a scan or a code`));
-  sock.ws.on('CB:notification,type:companion_reg_refresh', () => {
+  sock.ws.on('CB:notification,type:companion_reg_refresh', async (node) => {
     rotateAdvSecret(sock);
-    log(`${tag} 🔁 WhatsApp asked for a refreshed pairing — new secret, same code`);
     if (lastQr) show(refOf(lastQr) + lastQr.slice(lastQr.indexOf(',')));
+    // WhatsApp Web answers with an ack; Baileys' own ack fails before login (it needs creds.me),
+    // so it is sent from here, unless the account is registered and Baileys can do it.
+    let acked = false;
+    if (!sock.authState.creds.me && node?.attrs?.id) {
+      try { await sock.sendNode({ tag: 'ack', attrs: { id: node.attrs.id, to: node.attrs.from || 's.whatsapp.net', class: 'notification', type: 'companion_reg_refresh' } }); acked = true; }
+      catch (e) { log(`${tag} refresh ack failed: ${e?.message || e}`); }
+    }
+    log(`${tag} 🔁 WhatsApp asked for a refreshed pairing — new secret, same code${acked ? ', acknowledged' : ''}`);
   });
   sock.ws.on('CB:iq,,pair-success', () => log(`${tag} 📱 scanned — finishing the pairing`));
   return { get lastQr() { return lastQr; } };
