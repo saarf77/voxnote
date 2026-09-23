@@ -207,6 +207,125 @@ table{border-collapse:collapse;font-size:14px;white-space:nowrap}th,td{padding:4
 </style></head><body><header class="nav wrap${wide ? '' : ' narrow'}">${mark}${nav}</header><main${wide ? '' : ' class="wrap narrow"'}>${body}</main>${poll ? `<script nonce="${nonce}">document.addEventListener('DOMContentLoaded',()=>{${poll}\n});</script>` : ''}</body></html>`;
 }
 
+// ---------- admin page ----------
+// One card per account, newest activity first: who it is (WhatsApp name and number),
+// whether it works, what it used, and the support tools folded underneath. Never content.
+const ago = (ms) => {
+  if (!ms) return '—';
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;
+};
+const when = (ms) => (ms ? `<time title="${new Date(ms).toISOString().replace('T', ' ').slice(0, 16)} UTC">${ago(ms)}</time>` : '—');
+const phoneText = (d) => (d ? `+${d}` : '');
+// The last 7 UTC days before today and today itself, as small bars.
+function usageBars(history = [], today = 0) {
+  const byDay = new Map(history.map((h) => [h.day, h.minutes]));
+  const days = Array.from({ length: 8 }, (_, i) => { const d = new Date(Date.now() - (7 - i) * 864e5).toISOString().slice(0, 10); return [d, i === 7 ? today : byDay.get(d) || 0]; });
+  const max = Math.max(1, ...days.map(([, m]) => m));
+  const total = days.reduce((a, [, m]) => a + m, 0);
+  return `<svg class="bars" viewBox="0 0 80 34" preserveAspectRatio="none" role="img" aria-label="Minutes of audio per day, last 8 days">${days.map(([d, m], i) => { const h = Math.max(1.5, (m / max) * 34); return `<rect x="${i * 10 + 1}" y="${(34 - h).toFixed(1)}" width="8" height="${h.toFixed(1)}" rx="1.5"${i === 7 ? ' class="now"' : ''}><title>${i === 7 ? 'today' : d}: ${m} min</title></rect>`; }).join('')}</svg><span class="muted">${total} min in 8 days</span>`;
+}
+function stateOf(t) {
+  if (t.ready && t.lastError && Date.now() - t.lastError.at < 864e5) return ['warn', 'Connected, recent error'];
+  if (t.ready) return ['ok', 'Connected'];
+  if (!t.linkedAt) return ['wait', 'Waiting to link'];
+  return ['bad', { logged_out: 'Logged out of WhatsApp', qr: 'Needs a new scan', reconnecting: 'Reconnecting', starting: 'Starting' }[t.mode] || `Offline (${t.mode})`];
+}
+const nonceStyle = (nonce, css) => `<style nonce="${nonce}">${css}</style>`;
+const ADMIN_CSS = `
+.adm{padding-bottom:64px}.adm h1.small{margin:4px 0 18px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.tile small{display:block;color:var(--mute);font-size:13px}.tile b{font-family:var(--disp);font-size:30px;letter-spacing:-.03em;line-height:1.1}.tile span{color:var(--mute);font-size:14px}.tile b .danger{color:var(--danger);font-size:22px}
+.adbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+.adbar input{flex:1 1 240px;height:44px;border-radius:999px;padding:0 18px}
+.chip{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);font:inherit;font-size:14px;cursor:pointer;color:var(--ink)}
+.chip[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.acct{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;margin-bottom:12px}
+.acct[hidden]{display:none}
+.who{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.who h3{font-size:22px}.who a{font-family:var(--mono);font-size:15px}.who code{color:var(--mute);font-size:12px}
+.dot{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;margin-left:auto}
+.dot::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.dot.ok{color:#0a6b3c;background:#e3f6ea}.dot.warn{color:#8a5a00;background:#fff3d6}.dot.bad{color:var(--danger);background:#fbe7e5}.dot.wait{color:var(--mute);background:var(--chat)}
+.when{color:var(--mute);font-size:14px;margin:4px 0 14px}
+.facts2{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px 20px}
+.facts2 div{min-width:0}.facts2 small{display:block;color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.facts2 p{font-size:15px;overflow-wrap:anywhere}.facts2 .muted{font-size:13px}
+.bars{display:block;width:100%;max-width:200px;height:34px;margin:4px 0 2px}
+.bars rect{fill:var(--green)}.bars rect.now{fill:var(--ink)}
+.err{margin-top:14px;padding:10px 14px;border-radius:12px;background:#fbe7e5;color:var(--danger);font-size:14px;overflow-wrap:anywhere}
+.acct details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.acct summary{cursor:pointer;font-size:14px;font-weight:600;color:var(--mute)}
+.ops{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px}
+.ops form{display:flex;gap:8px;align-items:flex-end}.ops label{margin:0 0 4px;font-size:13px}.ops .f{flex:1;min-width:0}
+.ops select,.ops input[type=text]{height:40px;border-radius:10px;font-size:14px}
+.ops .btn{height:40px;padding:0 14px;font-size:14px;white-space:nowrap}
+.adout{margin-top:10px;font-size:13px;font-family:var(--mono);overflow-wrap:anywhere;color:var(--mute)}
+.empty{color:var(--mute);padding:24px 0}
+`;
+// Buttons post with fetch (the browser re-sends the Basic credentials) and show the answer inline.
+const ADMIN_JS = `
+const q=document.getElementById('q'),cards=[...document.querySelectorAll('.acct')],none=document.getElementById('none');let f='all';
+const apply=()=>{const s=q.value.trim().toLowerCase().replace(/[\\s+()-]/g,'');let n=0;for(const c of cards){const on=(f==='all'||c.dataset.state===f||(f==='bad'&&c.dataset.state==='warn'))&&(!s||c.dataset.find.includes(s));c.hidden=!on;n+=on;}none.hidden=n>0;};
+q.addEventListener('input',apply);apply();
+for(const b of document.querySelectorAll('.chip'))b.addEventListener('click',()=>{f=b.dataset.f;for(const x of document.querySelectorAll('.chip'))x.setAttribute('aria-pressed',x===b);apply();});
+for(const form of document.querySelectorAll('form[data-op]'))form.addEventListener('submit',async(e)=>{e.preventDefault();
+  if(form.dataset.confirm&&!confirm(form.dataset.confirm))return;
+  const out=form.closest('.acct').querySelector('.adout'),u=new URL(form.getAttribute('action'),location.origin);for(const [k,v] of new FormData(form))u.searchParams.set(k,v);
+  out.textContent='…';try{const r=await fetch(u,{method:'POST'});const j=await r.json().catch(()=>({}));out.textContent=(r.ok?'✓ ':'✗ ')+JSON.stringify(j);if(r.ok&&form.dataset.reload)setTimeout(()=>location.reload(),900);}catch(err){out.textContent='✗ '+err.message;}});
+`;
+function adminCard(t, byCode) {
+  const [state, stateLabel] = stateOf(t);
+  const name = t.waName || t.label || (t.linkedAt ? 'No name' : 'Not linked yet');
+  const inviter = t.referredBy ? byCode.get(t.referredBy) : null;
+  const find = [t.waName, t.label, t.phone, t.id, t.controlGroup].filter(Boolean).join(' ').toLowerCase().replace(/[\s+()-]/g, '');
+  const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
+  const langNow = t.language === 'auto' ? '' : t.language;
+  return `<article class="acct" data-state="${state}" data-find="${esc(find)}" id="a-${esc(t.id)}">
+<div class="who"><h3>${esc(name)}</h3>${t.phone ? `<a href="https://wa.me/${esc(t.phone)}" rel="noopener" target="_blank">${esc(phoneText(t.phone))}</a>` : ''}<code>${esc(t.id.slice(0, 8))}</code><span class="dot ${state}">${esc(stateLabel)}</span></div>
+<p class="when">Signed up ${when(t.createdAt)} · linked ${when(t.linkedAt)} · last voice note ${when(t.lastMessageAt)}</p>
+<div class="facts2">
+<div><small>Audio today</small><p><b>${t.minutesToday}</b>${t.dailyMinutes ? ` / ${t.dailyMinutes}` : ''} min${t.bonusMinutes ? ` <span class="muted">(+${t.bonusMinutes} bonus)</span>` : ''}</p></div>
+<div><small>Usage</small>${usageBars(t.usageHistory, t.minutesToday)}</div>
+<div><small>Since restart</small><p>${t.stats.transcribed} done · ${t.stats.dropped} skipped · <span${t.stats.failed ? ' class="danger"' : ''}>${t.stats.failed} failed</span></p></div>
+<div><small>Chats</small><p>${t.enabledGroups} groups on · ${t.mutedChats} chats off</p></div>
+<div><small>Plan · language</small><p>${esc(t.plan)} · ${esc(t.model)}<br><span class="muted">${esc(t.language)}${t.abModel ? ` · A/B ${esc(t.abModel)}` : ''}${t.keepAudio ? ' · 🎧 keeping audio' : ''}</span></p></div>
+<div><small>Control group</small><p>${t.controlGroup ? esc(t.controlGroup) : `<span class="danger">none</span>`}${t.needsManualGroup ? ' <span class="muted">(needs manual)</span>' : ''}</p></div>
+<div><small>Invites</small><p>${t.invited} friend${t.invited === 1 ? '' : 's'} joined${inviter ? `<br><span class="muted">invited by <a href="#a-${esc(inviter.id)}">${esc(inviter.waName || inviter.label || inviter.id.slice(0, 8))}</a></span>` : ''}</p></div>
+</div>
+${t.lastError ? `<div class="err"><b>Last error</b> ${when(t.lastError.at)}: ${esc(t.lastError.message)}</div>` : ''}
+<details><summary>Support tools</summary><div class="ops">
+<form data-op action="/admin/plan/${esc(t.id)}" data-reload="1"><div class="f"><label>Plan</label><select name="plan">${PLANS.map((p) => opt(p, `${p} · ${planLabel(p)}`, t.plan)).join('')}</select></div><button class="btn">Set</button></form>
+<form data-op action="/admin/language/${esc(t.id)}" data-reload="1"><div class="f"><label>Language</label><select name="code">${LANGUAGES.map(([v, , en]) => opt(v, en, langNow)).join('')}</select></div><button class="btn">Set</button></form>
+<form data-op action="/admin/ab/${esc(t.id)}" data-reload="1"><div class="f"><label>A/B models (comma-separated, empty = off)</label><input type="text" name="model" value="${esc(t.abModel || '')}"></div><button class="btn">Set</button></form>
+<form data-op action="/admin/keep-audio/${esc(t.id)}" data-reload="1"><input type="hidden" name="on" value="${t.keepAudio ? '0' : '1'}"><div class="f"><label>Keep recordings for research</label><p class="muted">${t.keepAudio ? 'On' : 'Off'}</p></div><button class="btn">${t.keepAudio ? 'Turn off' : 'Turn on'}</button></form>
+<form data-op action="/admin/link/${esc(t.id)}" data-confirm="Issue a new private link? The old one stops working."><div class="f"><label>Private link</label><p class="muted">Owner lost it?</p></div><button class="btn">New link</button></form>
+<form data-op action="/admin/control-group/${esc(t.id)}" data-confirm="Create a new control group in this account's WhatsApp?" data-reload="1"><input type="hidden" name="force" value="1"><div class="f"><label>Control group</label><p class="muted">Deleted by the owner?</p></div><button class="btn">Recreate</button></form>
+</div><p class="adout"></p></details>
+</article>`;
+}
+function adminPage(o, nonce) {
+  const byCode = new Map(o.tenants.map((t) => [t.inviteCode, t]));
+  const rank = (t) => (t.ready ? 0 : t.linkedAt ? 1 : 2);
+  const ts = [...o.tenants].sort((a, b) => rank(a) - rank(b) || (b.lastMessageAt || b.linkedAt || b.createdAt) - (a.lastMessageAt || a.linkedAt || a.createdAt));
+  const errors = ts.filter((t) => stateOf(t)[0] === 'warn' || stateOf(t)[0] === 'bad').length;
+  const tile = (label, big, small = '') => `<div class="tile"><small>${label}</small><b>${big}</b> <span>${small}</span></div>`;
+  return `${nonceStyle(nonce, ADMIN_CSS)}<div class="wrap adm"><h1 class="small">Accounts</h1>
+<div class="tiles">
+${tile('Connected', o.connected, `of ${o.accounts} · cap ${o.max}`)}
+${tile('Waiting to link', o.pending)}
+${tile('Need attention', errors)}
+${tile('Audio today', o.budget.serverMinutesToday, `${o.budget.serverDailyMinutes ? `/ ${o.budget.serverDailyMinutes} ` : ''}min${o.budget.perAccountDailyMinutes ? ` · ${o.budget.perAccountDailyMinutes}/account` : ''}`)}
+${tile('Storage', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</span>' : 'OK', 'data volume')}
+</div>
+<div class="adbar"><input type="text" id="q" placeholder="Search name, number, id, group" autocomplete="off">
+<button class="chip" data-f="all" aria-pressed="true">All</button><button class="chip" data-f="ok" aria-pressed="false">Connected</button><button class="chip" data-f="bad" aria-pressed="false">Need attention</button><button class="chip" data-f="wait" aria-pressed="false">Waiting</button></div>
+${ts.map((t) => adminCard(t, byCode)).join('')}
+<p class="empty" id="none"${ts.length ? ' hidden' : ''}>${ts.length ? 'No account matches.' : 'No accounts yet.'}</p>
+</div>`;
+}
+
 export function createWebApp() {
   const app = express();
   app.disable('x-powered-by');
@@ -613,17 +732,8 @@ tick();` }));
     registry.rotateKey(t);
     res.json({ id: t.id, label: t.label, link: `${req.protocol}://${req.get('host')}/link/${t.id}?k=${t.manageKey}` });
   });
-  // The seven UTC days before today, oldest first; a day with no audio is 0.
-  const week = (history = []) => {
-    const byDay = new Map(history.map((h) => [h.day, h.minutes]));
-    return Array.from({ length: 7 }, (_, i) => byDay.get(new Date(Date.now() - (7 - i) * 864e5).toISOString().slice(0, 10)) || 0).join(' · ');
-  };
   app.get('/admin', adminAuth, (_req, res) => {
-    const o = overview();
-    const rows = o.tenants.map((t) => `<tr><td><code>${esc(t.id.slice(0, 8))}</code> ${esc(t.label)}</td><td>${t.ready ? '<span class="ok">connected</span>' : esc(t.mode)}</td><td>${esc(t.plan)} · ${esc(t.model)}${t.abModel ? ` <span class="muted">A/B ${esc(t.abModel)}</span>` : ''}${t.keepAudio ? ' <span class="muted">🎧 keeping</span>' : ''}</td><td>${esc(t.controlGroup || '—')}</td><td>${esc(t.language)}</td><td>${t.enabledGroups}/${t.mutedChats}</td><td>${t.minutesToday}${t.dailyMinutes ? `/${t.dailyMinutes}` : ''}${t.bonusMinutes ? ` <span class="muted">(+${t.bonusMinutes} from ${t.invited} invited)</span>` : ''}</td><td>${week(t.usageHistory)}</td><td>${t.stats.transcribed}/${t.stats.dropped}/${t.stats.failed}</td><td>${t.lastMessageAt ? new Date(t.lastMessageAt).toISOString().slice(5, 16) : '—'}</td><td class="muted">${esc(t.lastError?.message || '')}</td></tr>`).join('');
-    res.type('html').send(page(res, `${PRODUCT_NAME} · admin`, `<div class="wrap"><h1 class="small">Admin</h1><p>${o.connected}/${o.accounts} connected · ${o.pending} pending · capacity ${o.max} · volume ${o.dataMounted === false ? '<b class="danger">NOT MOUNTED</b>' : 'ok'}</p>
-<p>Server audio today: <b>${o.budget.serverMinutesToday}</b>${o.budget.serverDailyMinutes ? ` / ${o.budget.serverDailyMinutes}` : ''} min${o.budget.perAccountDailyMinutes ? ` · per account ${o.budget.perAccountDailyMinutes} min/day` : ''}</p>
-<div class="card"><table><tr><th>account</th><th>state</th><th>plan · model</th><th>control group</th><th>lang</th><th>groups on / DMs off</th><th>min today / limit</th><th>last 7 days (min, oldest first)</th><th>ok/drop/fail</th><th>last msg (UTC)</th><th>last error</th></tr>${rows}</table></div></div>`, { wide: true }));
+    res.type('html').send(page(res, `${PRODUCT_NAME} · admin`, adminPage(overview(), res.locals.nonce), { wide: true, nav: '<a class="navlink" href="/admin.json">JSON</a>', poll: ADMIN_JS }));
   });
 
   // Liveness only. Counts and details are behind the admin password.

@@ -127,6 +127,8 @@ export class Tenant {
       // Opt-in, off for everyone unless the owner asked for it: keep a copy of
       // each recording with what the models made of it, to improve the product.
       keepAudio: rec.keepAudio === true,
+      // Who this account is, for the admin page: the linked number and the owner's WhatsApp name.
+      phone: /^\d{6,15}$/.test(rec.phone || '') ? rec.phone : '', waName: String(rec.waName || '').slice(0, 80),
     });
     this.dir = dir; mkdirSync(dir, { recursive: true });
     this.tag = `[${this.id.slice(0, 6)}]`;
@@ -204,7 +206,10 @@ export class Tenant {
     this.ownId = sock.user?.id ? jidNormalizedUser(sock.user.id) : null;
     this.ownLid = sock.user?.lid ? jidNormalizedUser(sock.user.lid) : null;
     this.ready = true; this.qr = null; this.mode = 'connected';
+    const phone = this.ownId?.split('@')[0] || '', waName = String(sock.user?.name || sock.user?.verifiedName || this.waName).slice(0, 80);
+    const known = (phone && phone !== this.phone) || waName !== this.waName; this.phone = phone || this.phone; this.waName = waName;
     if (!this.linkedAt) { this.linkedAt = Date.now(); this.persistRecord(); this.onFirstLink?.(this); }
+    else if (known) this.persistRecord();
     this.pairPhone = ''; this.pairingCode = null;
     console.log(`${this.tag} ✅ connected as ${this.ownId?.replace(/^(\d{5})\d+/, '$1…')}${this.target ? ' · control group set' : ' · no control group yet'}`);
     if (!this.target) await this.createControlGroup();
@@ -327,7 +332,7 @@ Each one is a single word.
   }
 
   // ---------- state persistence ----------
-  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes }); }
+  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, phone: this.phone, waName: this.waName }); }
 
   /** Today's ceiling for this account: the server default plus whatever invites earned. */
   dailyCapMinutes() { return DAILY_MINUTES_CAP > 0 ? DAILY_MINUTES_CAP + this.bonusMinutes : 0; }
@@ -969,7 +974,8 @@ Each one is a single word.
       lastMessageAt: this.lastMessageAt || null, stats: this.stats, lastError: this.lastError,
       inviteCode: this.inviteCode, invited: this.invited, dailyMinutes: this.dailyCapMinutes(), bonusMinutes: this.bonusMinutes,
     };
-    if (history) base.usageHistory = this.usageHistory;
+    // The admin page also sees who the account is: its number, WhatsApp name and who invited it.
+    if (history) Object.assign(base, { usageHistory: this.usageHistory, phone: this.phone || null, waName: this.waName || null, referredBy: this.referredBy || null });
     return full ? { ...base, qr: this.qr, pairingCode: this.pairingCode, pairByCode: !!this.pairPhone, rescan: this.pairRefreshedAt > 0 && Date.now() - this.pairRefreshedAt < 180e3, waMe: this.ownId ? `https://wa.me/${this.ownId.split('@')[0]}` : null, product: PRODUCT_NAME } : base;
   }
 }
