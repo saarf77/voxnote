@@ -27,11 +27,10 @@ export const summaryLabel = MODEL;
 export const wordCount = (s) => (s || '').trim().split(/\s+/).filter(Boolean).length;
 
 /**
- * What makes a headline worth reading. Shared with the rewrite, which writes the
- * headline in the same call as the message; this module is the fallback.
+ * What makes a headline worth reading.
  */
-export const HEADLINE_RULES = `- It must stand on its own: someone who reads only the headline knows what the message is about and what is wanted from them. Give the context a bare question needs ("GDPR: are they still obliged to hand over the data if the charge was anonymous?", not "are they still obliged?").
-- Length follows the message, and too short is the usual failure: a headline that does not get the point across is worthless. One simple point → one sentence, up to about 15 words. A long message with a few points, or several separate topics or requests → two or three short sentences, 25 to 45 words. Give the POINT of each — what was decided, asked or found — not a label for it ("גדר: צריך אותה לאורך טרסת הבטון שליד המדרגות למרתף", not "גדר למדרגות"). Never pick one topic out of several — least of all just the last thing said.
+export const HEADLINE_RULES = `- It must stand on its own: someone who reads only the headline knows what the message is about and what is wanted from them. Give the context a bare question needs ("the lease: can they still keep the deposit if the damage was there before we moved in?", not "can they still keep it?").
+- Length follows the message, and too short is the usual failure: a headline that does not get the point across is worthless. One simple point → one sentence, up to about 15 words. A long message with a few points, or several separate topics or requests → two or three short sentences, 25 to 45 words. Give the POINT of each — what was decided, asked or found — not a label for it ("מקרר: הטכנאי מגיע מחר בין 8 ל-12 ומישהו צריך להיות בבית", not "מקרר"). Never pick one topic out of several — least of all just the last thing said.
 - A request or a question to the reader is always in the headline. So is how the speaker is doing when that is the point of the message ("I'm worn out, no progress this week").
 - Lead with the concrete substance: numbers, times, outcomes, the actual question. Prefer "דוד נרדם ב-20 דקות בלי שהרמתי אותו" over "אני מתאר את ההרדמה".
 - FORBIDDEN openings and words: "אני מתאר", "אני מדווח", "אני מעדכן", "אני מספר", "I describe", "I report", "update on", "כולל", "including", "various", "שונים". Never list the topics covered; say what happened.

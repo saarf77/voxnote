@@ -123,7 +123,7 @@ test('the rewrite input labels several readings of the same audio and drops dupl
     isMe: true,
     alts: ['שוב, אלא אם ממש תשקיע', 'שוב, אין להם ממש תשקיע', { text: 'שוב, אלא היא ממש תשקיע' }],
   });
-  assert.ok(many.includes('Transcript A (the one being rewritten)'));
+  assert.ok(many.includes('Transcript A (the one being corrected)'));
   assert.ok(many.includes('Transcript B'), 'the other reading is handed over');
   assert.ok(many.includes('Transcript C'), 'an object reading is accepted too');
   assert.ok(!many.includes('Transcript D'), 'a reading identical to A is not repeated');

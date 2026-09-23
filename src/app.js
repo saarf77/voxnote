@@ -13,7 +13,7 @@ import { PRODUCT_NAME, DEFAULT_PLAN, DAILY_MINUTES_CAP, MAX_TRANSCRIBE_SECONDS }
 import { transcribeEnabled, planEnabled, planLabel } from './transcribe.js';
 import { GLOBAL_DAILY_MINUTES, secondsToday } from './budget.js';
 import * as research from './research.js';
-import { rewriteEnabled, rewriteLabel, editorLabel } from './rewrite.js';
+import { rewriteEnabled, rewriteLabel } from './rewrite.js';
 import { summarizeEnabled, summaryLabel } from './summarize.js';
 import { llmFallbackLabel } from './llm.js';
 
@@ -32,7 +32,7 @@ console.log(`Starting ${PRODUCT_NAME}… (uid ${typeof process.getuid === 'funct
 if (!transcribeEnabled) console.error('❌ No transcription provider configured — nothing will be transcribed.');
 console.log(`🎙️  Transcription per plan: pro → ${planLabel('pro')}${planEnabled('free') ? `, free → ${planLabel('free')}` : ''} · new accounts start on "${DEFAULT_PLAN}"${planEnabled('free') && planEnabled('pro') ? ' · a pro account falls back to the free provider only if its own fails' : ''}`);
 console.log(`💰 Caps: ${DAILY_MINUTES_CAP || '∞'} min/day per account · ${GLOBAL_DAILY_MINUTES || '∞'} min/day for this server (${Math.round(secondsToday() / 60)} used today) · ${MAX_TRANSCRIBE_SECONDS ? `${Math.round(MAX_TRANSCRIBE_SECONDS / 60)} min` : 'no limit'} per recording · the same recording twice is free`);
-console.log(`✍️  Rewrite: ${rewriteEnabled ? `pro = editor (${editorLabel}), free = faithful (${rewriteLabel})` : 'OFF (raw transcripts)'} · summary: ${summarizeEnabled ? summaryLabel : 'OFF'} · chat fallback: ${llmFallbackLabel || 'none'} · second reading for the rewrite: ${process.env.SECOND_READING_MODEL || 'off (single reading)'}`);
+console.log(`✍️  Rewrite: ${rewriteEnabled ? `correction pass (${rewriteLabel})` : 'OFF (raw transcripts)'} · summary: ${summarizeEnabled ? summaryLabel : 'OFF'} · chat fallback: ${llmFallbackLabel || 'none'} · second reading for the rewrite: ${process.env.SECOND_READING_MODEL || 'off (single reading)'}`);
 console.log(`✉️  Dictated messages: ${dictateEnabled ? 'ON — every one is confirmed by the owner before it is sent' : 'OFF'}`);
 const mounted = dataDirIsMount();
 if (mounted === false) console.error(`🚨 DATA_DIR ${dataDir} is NOT a mounted volume — every linked account will be LOST on the next restart.`);

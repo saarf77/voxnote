@@ -1,7 +1,7 @@
 // node --test test/rewrite.test.mjs  (pure guard tests, no network)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptRewrite, splitHeadline, buildRewriteInput } from '../src/rewrite.js';
+import { acceptRewrite, buildRewriteInput } from '../src/rewrite.js';
 import { acceptHeadline } from '../src/summarize.js';
 
 const input = 'היי רציתי לעדכן לגבי הפגישה של מחר חדר הישיבות בקומה שלוש תפוס עד עשר אז נתחיל בעשר וחצי תביאו את המצגת של הרבעון ואת רשימת הלקוחות החדשים אם מישהו לא יכול להגיע שיכתוב לי עד הערב ונמצא מועד אחר חוץ מזה המדפסת בקומה שתיים שוב תקועה אז תדפיסו למטה תודה ונדבר מחר';
@@ -13,12 +13,7 @@ test('a rewrite of similar length is accepted, quotes and bold stripped', () => 
   assert.ok(!r.text.startsWith('"') && !r.text.includes('*'));
 });
 
-test('a much shorter message that kept the content is accepted', () => {
-  const r = acceptRewrite(input, 'הפגישה מחר נדחית לעשר וחצי כי החדר בקומה שלוש תפוס. תביאו את מצגת הרבעון ואת רשימת הלקוחות החדשים. מי שלא יכול, שיכתוב לי עד הערב. המדפסת בקומה שתיים תקועה, תדפיסו למטה.');
-  assert.equal(r.ok, true);
-});
-
-test('a stub out of a long note is rejected: content was lost', () => {
+test('a much shorter result is rejected: something was dropped', () => {
   const r = acceptRewrite(input, 'הפגישה מחר בעשר וחצי.');
   assert.equal(r.ok, false);
   assert.match(r.reason, /too short/);
@@ -49,30 +44,19 @@ test('empty is rejected', () => {
   assert.equal(acceptRewrite(input, '  ').ok, false);
 });
 
-test('the headline is split from the message; a reply without one is all message', () => {
-  assert.deepEqual(splitHeadline('החדר תפוס עד עשר.\nתביאו את המצגת.\n\nHEADLINE: הפגישה נדחית לעשר וחצי'), { headline: 'הפגישה נדחית לעשר וחצי', body: 'החדר תפוס עד עשר.\nתביאו את המצגת.' });
-  assert.deepEqual(splitHeadline('החדר תפוס עד עשר.'), { headline: null, body: 'החדר תפוס עד עשר.' });
-});
-
-test('the headline is asked for in the user message, so the system prompt stays cacheable', () => {
-  assert.match(buildRewriteInput('שלום', { headline: true }), /Headline: yes, about 12 words/);
-  assert.match(buildRewriteInput(Array(400).fill('מילה').join(' '), { headline: true }), /about 45 words/);
-  assert.match(buildRewriteInput('שלום', { headline: false }), /Headline: no/);
-});
-
 test('a headline may run to a few sentences for a long note, but not to a paragraph or report-speak', () => {
-  assert.equal(acceptHeadline('אל-על: תפנה לווטסאפ הרשמי, אין בעיה. גדר: לאורך טרסת הבטון ליד המדרגות למרתף. ומה זה "הרשאות גוגל" מספר 2?').ok, true);
+  assert.equal(acceptHeadline('הרכב: המוסך מחזיר אותו מחר בצהריים. הגן: צריך לחתום על הטופס עד חמישי. ומי אוסף את הילדים ביום שני?').ok, true);
   assert.equal(acceptHeadline(Array(70).fill('מילה').join(' ')).ok, false);
   assert.equal(acceptHeadline('שורה אחת\nושורה שנייה').ok, false);
   assert.equal(acceptHeadline('אני מתאר את ההרדמות של היום').ok, false);
 });
 
-test('the faithful style keeps its own guard: a much shorter result is a summary, and is refused', () => {
-  const short = 'הפגישה מחר נדחית לעשר וחצי כי החדר בקומה שלוש תפוס. תביאו את מצגת הרבעון.';
-  assert.equal(acceptRewrite(input, short).ok, true);
-  assert.equal(acceptRewrite(input, short, { style: 'faithful' }).ok, false);
+test('a summary-length result is rejected: a correction pass keeps every sentence', () => {
+  assert.equal(acceptRewrite(input, 'הפגישה מחר נדחית לעשר וחצי כי החדר בקומה שלוש תפוס. תביאו את מצגת הרבעון ואת רשימת הלקוחות. המדפסת תקועה.').ok, false);
 });
 
-test('the faithful rewrite is not asked about a headline at all', () => {
-  assert.doesNotMatch(buildRewriteInput('שלום', { headline: null }), /Headline/);
+test('the other readings are labelled, the corrected one first', () => {
+  const s = buildRewriteInput('שלום', { alts: ['שלום לך'] });
+  assert.match(s, /Transcript A \(the one being corrected\):\nשלום\n\nTranscript B:\nשלום לך/);
+  assert.doesNotMatch(s, /Headline/);
 });

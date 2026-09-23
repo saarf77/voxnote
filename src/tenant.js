@@ -24,7 +24,7 @@ import { createSemaphore } from './semaphore.js';
 import { transcribeRun, measureSeconds, transcribeEnabled, planEnabled, planLabel, PLANS } from './transcribe.js';
 import * as budget from './budget.js';
 import { checkTranscript } from './sanity.js';
-import { rewriteMessage } from './rewrite.js';
+import { rewriteTranscript } from './rewrite.js';
 import { summarizeTranscript } from './summarize.js';
 import { createGlossary } from './glossary.js';
 import * as research from './research.js';
@@ -641,13 +641,9 @@ Each one is a single word.
       // provider) are the best signal for a misheard word — hand them to the
       // rewrite. Only same-script readings: a transliterated one would mislead it.
       const alts = (run.compare || []).map((c) => c.text).filter((t) => t && sameScript(run.text, t));
-      // One call writes the message and, for a long recording, its bold headline.
-      // The separate summary is only the fallback when that call gave no headline.
-      // The free-hand editor is the pro plan's; the free plan gets the faithful rewrite.
-      const edited = await rewriteMessage(run.text, { ...who, names: this.namesHint(), alts, style: plan === 'pro' ? 'editor' : 'faithful' });
-      const rewritten = edited?.text || null;
+      const rewritten = await rewriteTranscript(run.text, { ...who, names: this.namesHint(), alts });
       const content = rewritten || run.text;
-      const summary = edited?.summary || await summarizeTranscript(content, who);
+      const summary = await summarizeTranscript(content, who);
       Object.assign(keep, { rewritten: rewritten || null, summary: summary || null });
       const body = summary ? `*${summary}*\n${content}` : content;
       this.trace('transcribed', { id: n.id, seconds: n.seconds, inControl: !!inControl, fromMe: n.fromMe, forwarded: n.forwarded, isGroup: n.isGroup, model: run.model, raw: run.text, alts, rewritten: rewritten || null, summary: summary || null });
