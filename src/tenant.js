@@ -153,6 +153,7 @@ export class Tenant {
     this.link = null; this.sock = null; this.ownId = null; this.ownLid = null;
     this.mode = 'starting'; this.qr = null; this.ready = false;
     this.pairPhone = ''; this.pairingCode = null; // link with a code instead of a scan: the number, and the code in force
+    this.pairRefreshedAt = 0; // WhatsApp answered a scan by changing the code: the phone has to scan again
     this.lastMessageAt = 0; this.lastError = null; this.needsManualGroup = false;
     this.stats = { transcribed: 0, dropped: 0, failed: 0 };
     this.sendChain = Promise.resolve();
@@ -172,8 +173,9 @@ export class Tenant {
         this.ready = false; this.mode = 'qr'; this.qr = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
         if (this.pairPhone && !this.pairingCode) await this.issuePairingCode(); // a new socket: the old code died with the last one
       },
+      onPairRefresh: () => { this.pairRefreshedAt = Date.now(); },
       onReady: (sock) => this.onReady(sock),
-      onClose: () => { this.ready = false; this.qr = null; this.pairingCode = null; if (this.mode === 'connected') this.mode = 'reconnecting'; },
+      onClose: () => { this.ready = false; this.qr = null; this.pairingCode = null; this.pairRefreshedAt = 0; if (this.mode === 'connected') this.mode = 'reconnecting'; },
       onLoggedOut: () => { this.mode = 'logged_out'; this.ready = false; },
       onMessage: (m, sock) => this.onMessage(m, sock),
       onChats: (chats) => this.onChats(chats),
@@ -940,6 +942,6 @@ Each one is a single word.
       inviteCode: this.inviteCode, invited: this.invited, dailyMinutes: this.dailyCapMinutes(), bonusMinutes: this.bonusMinutes,
     };
     if (history) base.usageHistory = this.usageHistory;
-    return full ? { ...base, qr: this.qr, pairingCode: this.pairingCode, pairByCode: !!this.pairPhone, product: PRODUCT_NAME } : base;
+    return full ? { ...base, qr: this.qr, pairingCode: this.pairingCode, pairByCode: !!this.pairPhone, rescan: this.pairRefreshedAt > 0 && Date.now() - this.pairRefreshedAt < 180e3, product: PRODUCT_NAME } : base;
   }
 }

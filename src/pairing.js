@@ -30,7 +30,7 @@ export function rotateAdvSecret(sock) {
  * Wire one socket. onQr gets every QR to show (already carrying the current
  * secret); log lines say how far a pairing got, never what was in it.
  */
-export function attach(sock, { onQr, tag = '', log = console.log } = {}) {
+export function attach(sock, { onQr, onRefresh, tag = '', log = console.log } = {}) {
   let lastQr = null;
   const show = (qr) => { lastQr = withAdvSecret(qr, sock.authState.creds.advSecretKey); onQr?.(lastQr); };
   sock.ev.on('connection.update', (u) => { if (u.qr) show(u.qr); });
@@ -46,6 +46,7 @@ export function attach(sock, { onQr, tag = '', log = console.log } = {}) {
       catch (e) { log(`${tag} refresh ack failed: ${e?.message || e}`); }
     }
     log(`${tag} 🔁 WhatsApp asked for a refreshed pairing — new secret, same code${acked ? ', acknowledged' : ''}`);
+    onRefresh?.();
   });
   sock.ws.on('CB:iq,,pair-success', () => log(`${tag} 📱 scanned — finishing the pairing`));
   return { get lastQr() { return lastQr; } };

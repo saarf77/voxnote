@@ -52,7 +52,7 @@ export function createLink(cb) {
       qrTimeout: 45000, // each QR (and so a pairing code) lives 45s; a socket offers six before it starts over
     });
     const s = sock;
-    attachPairing(s, { tag, onQr: (qr) => cb.onQr?.(qr) });
+    attachPairing(s, { tag, onQr: (qr) => cb.onQr?.(qr), onRefresh: () => cb.onPairRefresh?.() });
 
     s.ev.on('creds.update', saveCreds);
 

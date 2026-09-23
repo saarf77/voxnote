@@ -9,7 +9,8 @@ const fakeSocket = () => { const s = { ev: new EventEmitter(), ws: new EventEmit
 test('a QR from Baileys is shown with the current secret; a companion_reg_refresh rotates it, shows the same ref again and is acknowledged', async () => {
   const sock = fakeSocket(); const shown = []; const saved = [];
   sock.ev.on('creds.update', (c) => saved.push(c.advSecretKey));
-  attach(sock, { onQr: (q) => shown.push(q), log: () => {} });
+  let refreshed = 0;
+  attach(sock, { onQr: (q) => shown.push(q), onRefresh: () => refreshed++, log: () => {} });
   sock.ev.emit('connection.update', { qr: 'ref1,NOISE,IDENT,OLD=' });
   assert.deepEqual(shown, ['ref1,NOISE,IDENT,OLD=']);
   sock.ws.emit('CB:notification,type:companion_reg_refresh', { tag: 'notification', attrs: { id: 'n1', from: 's.whatsapp.net', type: 'companion_reg_refresh' } });
@@ -19,6 +20,7 @@ test('a QR from Baileys is shown with the current secret; a companion_reg_refres
   assert.notEqual(fresh, 'OLD='); assert.equal(Buffer.from(fresh, 'base64').length, 32);
   assert.deepEqual(saved, [fresh], 'persisted through creds.update');
   assert.equal(shown[1], `ref1,NOISE,IDENT,${fresh}`, 'same ref, new secret — no QR from the pool spent');
+  assert.equal(refreshed, 1, 'the page is told: the phone has to scan again');
   // Baileys keeps rotating refs with the secret it captured at the start; every one is corrected.
   sock.ev.emit('connection.update', { qr: 'ref2,NOISE,IDENT,OLD=' });
   assert.equal(shown[2], `ref2,NOISE,IDENT,${fresh}`);

@@ -419,12 +419,12 @@ function render(s){
  document.body.classList.toggle('on',s.mode==='connected');
  document.body.dataset.code=s.pairByCode?'1':'';
  // The same picture is not redrawn: a number being typed must survive the next poll.
- const key=[s.mode,s.pairByCode,s.pairingCode,via==='qr'&&!s.pairByCode&&s.qr?s.qr.slice(-40):'',via,s.controlGroup,s.needsManualGroup].join('|');if(key===shown)return;shown=key;
+ const key=[s.mode,s.pairByCode,s.pairingCode,via==='qr'&&!s.pairByCode&&s.qr?s.qr.slice(-40):'',via,s.rescan,s.controlGroup,s.needsManualGroup].join('|');if(key===shown)return;shown=key;
  if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1>'+(s.controlGroup?'<p>A group called <b>'+esc(s.controlGroup)+'</b> is now in your WhatsApp. Only you are in it. Open it.</p>':(s.needsManualGroup?'<p>Create a WhatsApp group with just you in it and post <code>#transcribe</code> there. That becomes your control group.</p>':'<p>Setting up your control group…</p>'))+'<p class="go">Then send someone a voice note.</p>';}
  else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>Enter this code.</h1><p>'+steps+', then <b>Link with phone number instead</b>.</p><div class="code">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</div><p class="muted">It&#39;s good for a few minutes; when it expires a fresh one appears here on its own.</p>'+swap('qr');}
  else if(s.mode==='qr'&&s.pairByCode){box().innerHTML='<span class="pill"><i></i>Getting you a code…</span>'+swap('qr');}
  else if(s.mode==='qr'&&via==='code'){box().innerHTML='<h1>Link with a code.</h1><form method="post" action="/link/${t.id}/code"><label for="phone">Your WhatsApp number, with the country code</label><input type="tel" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="972 50 123 4567" required><button class="btn" type="submit">Get a code</button></form>'+swap('qr');}
- else if(s.qr){box().innerHTML='<h1>Scan this.</h1><p>'+steps+'.</p><img class="qr" src="'+esc(s.qr)+'" alt="QR code"><p class="muted center">The code refreshes on its own.</p>'+swap('code');}
+ else if(s.qr){box().innerHTML='<h1>Scan this.</h1><p>'+steps+'.</p><img class="qr" src="'+esc(s.qr)+'" alt="QR code">'+(s.rescan?'<p class="go center">Your phone said it couldn\\'t link? Scan this one again. WhatsApp changed the code after the first scan.</p>':'<p class="muted center">The code refreshes on its own.</p>')+swap('code');}
  else if(s.mode==='logged_out'){box().innerHTML='<span class="pill"><i></i>Logged out</span><p>WhatsApp logged this device out. A new code is coming…</p>';}
  else{box().innerHTML='<span class="pill"><i></i>'+(s.mode==='reconnecting'?'Reconnecting…':'Preparing your code…')+'</span>';}
 }
