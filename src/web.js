@@ -161,7 +161,11 @@ select{padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 .pill.ok{background:var(--ink);border-color:var(--ink);color:#fff}
 .pill i{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}.pill.ok i{background:var(--green)}
 #box{display:flex;flex-direction:column;gap:14px;padding:12px 0 28px}#box .pill{align-self:flex-start}
-#box h1{font-size:56px;white-space:normal}#box p{color:var(--mute)}#box p.go{color:var(--ink)}
+#box h1{font-size:56px;white-space:normal}#box p{color:var(--mute)}#box p.go{color:var(--ink);font-size:19px}#box .cta{margin:6px 0 4px}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9}
+.tools{display:none;flex-direction:column;gap:18px;border-top:1px solid var(--line);padding:22px 0 8px}.on .tools{display:flex}
+.tools form{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.tools label{margin:0;flex:none}.tools select{flex:1;min-width:160px;height:44px}
+.quiet{background:none;border:0;padding:0;color:var(--danger);font:inherit;font-size:15px;font-weight:600;text-decoration:underline;cursor:pointer}
 .qr{display:block;width:100%;max-width:302px;margin:8px auto;border-radius:24px;background:#fff;padding:16px;border:1px solid var(--line)}
 .code{font-family:var(--mono);font-size:44px;font-weight:500;letter-spacing:.12em;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:22px 12px;margin:8px 0}.code i{font-style:normal;color:var(--mute);margin:0 4px}
 a.swap{display:inline-block;margin-top:8px;color:var(--mute);font-size:15px}#box form{display:flex;flex-direction:column;gap:12px;align-items:flex-start}#box form input{width:100%}
@@ -401,26 +405,34 @@ ${FOOT}`, { wide: true, nav: NAV })));
     const onPhone = /Mobile|Android|iPhone|iPad|iPod/i.test(req.get('user-agent') || '');
     const via = ['qr', 'code'].includes(req.query.via) ? req.query.via : onPhone ? 'code' : 'qr';
     res.type('html').send(page(res, `${PRODUCT_NAME} · Link your WhatsApp`, `
+<canvas id="fx" hidden aria-hidden="true"></canvas>
 <div id="box"><span class="pill"><i></i>Starting…</span></div>
 <form method="post" action="/link/${t.id}/qr" id="toqr" hidden></form>
-<div class="row after"><h3>Language</h3><form method="post" action="/link/${t.id}/language"><label for="lang">Leave it on auto unless it keeps guessing wrong.</label>${langSelect(t.language)}<button class="btn" type="submit">Save</button></form></div>
-<div class="row"><h3>Leave</h3><p class="muted">Logs ${esc(PRODUCT_NAME)} out of your WhatsApp and deletes everything about you here. You can do the same from WhatsApp at any time: write <b>leave</b> in your ${esc(PRODUCT_NAME)} group.</p><form method="post" action="/unlink/${t.id}" id="unlink"><button class="danger" type="submit">Unlink and erase</button></form></div>
+<div class="tools">
+<form method="post" action="/link/${t.id}/language"><label for="lang">Language</label>${langSelect(t.language)}<button class="btn" type="submit">Save</button></form>
+<form method="post" action="/unlink/${t.id}" id="unlink"><button class="quiet" type="submit">Unlink and erase everything</button><span class="muted">Or write <b>leave</b> in your ${esc(PRODUCT_NAME)} group.</span></form>
+</div>
 <a class="back" href="/privacy">Privacy &amp; terms</a>`, { poll: `
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const box=()=>document.getElementById('box');
+const box=()=>document.getElementById('box');const product=${JSON.stringify(PRODUCT_NAME)};
 let via='${via}',shown='';
 const steps='In WhatsApp: <b>Settings</b>, then <b>Linked devices</b>, then <b>Link a device</b>';
 const swap=(to)=>'<a href="#" class="swap" data-to="'+to+'">'+(to==='qr'?'Scan a QR code instead':'Link with a code instead')+'</a>';
 document.addEventListener('click',e=>{const a=e.target.closest('a.swap');if(!a)return;e.preventDefault();if(a.dataset.to==='qr'&&document.body.dataset.code==='1'){document.getElementById('toqr').submit();return;}via=a.dataset.to;shown='';tick();});
 document.getElementById('unlink').addEventListener('submit',e=>{if(!confirm('Unlink WhatsApp and erase this account?'))e.preventDefault();});
+// Confetti, once, the moment the link goes through — not for someone coming back to a linked account.
+let wasLinked=null;
+function confetti(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;const c=document.getElementById('fx'),x=c.getContext('2d');c.hidden=false;const W=c.width=innerWidth,H=c.height=innerHeight;const cols=['#25d366','#121212','#d9fdd3','#faf7f2','#1fa855'];const ps=Array.from({length:160},()=>({x:W/2+(Math.random()-.5)*W*.3,y:H*.35,vx:(Math.random()-.5)*14,vy:-Math.random()*16-4,r:Math.random()*Math.PI,vr:(Math.random()-.5)*.3,w:6+Math.random()*6,h:8+Math.random()*10,c:cols[Math.random()*cols.length|0]}));const t0=performance.now();(function f(t){const k=(t-t0)/1000;x.clearRect(0,0,W,H);for(const p of ps){p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.vx*=.99;p.r+=p.vr;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.globalAlpha=Math.max(0,1-Math.max(0,k-2)/1);x.fillStyle=p.c;x.fillRect(-p.w/2,-p.h/2,p.w,p.h);x.restore();}if(k<3.2)requestAnimationFrame(f);else{c.hidden=true;}})(t0);}
 let timer=null;
 async function tick(){clearTimeout(timer);try{const r=await fetch('/api/link/${t.id}',{credentials:'same-origin'});if(r.ok){render(await r.json());}}catch(e){}timer=setTimeout(tick,2500)}
 function render(s){
- document.body.classList.toggle('on',s.mode==='connected');
+ document.body.classList.toggle('on',!!s.linkedAt);
  document.body.dataset.code=s.pairByCode?'1':'';
+ if(s.mode==='connected'&&wasLinked===false)confetti();
+ wasLinked=s.mode==='connected';
  // The same picture is not redrawn: a number being typed must survive the next poll.
  const key=[s.mode,s.pairByCode,s.pairingCode,via==='qr'&&!s.pairByCode&&s.qr?s.qr.slice(-40):'',via,s.rescan,s.controlGroup,s.needsManualGroup].join('|');if(key===shown)return;shown=key;
- if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1>'+(s.controlGroup?'<p>A group called <b>'+esc(s.controlGroup)+'</b> is now in your WhatsApp. Only you are in it. Open it.</p>':(s.needsManualGroup?'<p>Create a WhatsApp group with just you in it and post <code>#transcribe</code> there. That becomes your control group.</p>':'<p>Setting up your control group…</p>'))+'<p class="go">Then send someone a voice note.</p>';}
+ if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1><p class="go">Now record your first voice note. To anyone, even to yourself. The text shows up right under it.</p>'+(s.waMe?'<a class="cta" href="'+esc(s.waMe)+'">Open WhatsApp</a>':'')+(s.needsManualGroup?'<p>One thing first: create a WhatsApp group with just you in it and post <code>#transcribe</code> there. That becomes your '+esc(product)+' group.</p>':'<p class="muted">Your <b>'+esc(s.controlGroup||product)+'</b> group in WhatsApp is where you tune things. Write <b>help</b> there.</p>');}
  else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>Enter this code.</h1><p>'+steps+', then <b>Link with phone number instead</b>.</p><div class="code">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</div><p class="muted">It&#39;s good for a few minutes; when it expires a fresh one appears here on its own.</p>'+swap('qr');}
  else if(s.mode==='qr'&&s.pairByCode){box().innerHTML='<span class="pill"><i></i>Getting you a code…</span>'+swap('qr');}
  else if(s.mode==='qr'&&via==='code'){box().innerHTML='<h1>Link with a code.</h1><form method="post" action="/link/${t.id}/code"><label for="phone">Your WhatsApp number, with the country code</label><input type="tel" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="972 50 123 4567" required><button class="btn" type="submit">Get a code</button></form>'+swap('qr');}
