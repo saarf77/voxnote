@@ -273,7 +273,7 @@ test('the welcome is short, in the owner\'s language, without the pilot features
     setup(); const w = t.welcomeText();
     assert.match(w, re); assert.ok(w.length < 650, `${w.length} chars`);
     assert.ok(!/names:|Eden|undo|שמות/.test(w));
-    assert.match(w, /\*leave\*/); assert.match(w, /\*help\*/); assert.match(w, /\*on\*/);
+    assert.match(w, /\*leave\*/); assert.match(w, /\*help\*/); assert.match(w, /\*include\*/);
   }
   t.locale = ''; t.ownId = '15551234567@s.whatsapp.net';
   assert.match(t.welcomeText(), /^Welcome to \*\w+\*/);
@@ -282,7 +282,7 @@ test('the welcome is short, in the owner\'s language, without the pilot features
 test('help lists the commands, one word each, in the owner\'s language, and leaves the pilot out', async () => {
   const t = tenant();
   assert.equal(await text(t, 'Help'), true);
-  for (const w of ['on', 'off', 'delete', 'leave', 'help']) assert.match(t.out[0].text, new RegExp(`\\*${w}\\*`));
+  for (const w of ['include', 'exclude', 'delete', 'leave', 'help']) assert.match(t.out[0].text, new RegExp(`\\*${w}\\*`));
   assert.ok(!/names|undo|Eden/.test(t.out[0].text));
   t.locale = 'he';
   assert.equal(await text(t, 'help'), true);

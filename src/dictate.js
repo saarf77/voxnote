@@ -89,7 +89,7 @@ export async function extractDictation(text, { trace = null } = {}) {
 }
 
 // ---------- contact matching (pure) ----------
-const norm = (s) => String(s || '').normalize('NFKC').toLowerCase()
+export const norm = (s) => String(s || '').normalize('NFKC').toLowerCase()
   .replace(/[\u0591-\u05C7]/g, '')          // niqqud and cantillation
   .replace(/[^\p{L}\p{N}\s]/gu, ' ')        // punctuation, emoji, quotes
   .replace(/\s+/g, ' ').trim();

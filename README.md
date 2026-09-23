@@ -27,8 +27,9 @@ message explains everything:
 
 | Do this | Effect |
 |---|---|
-| Forward a voice note from any chat into the *Ramble* group | its text + whether that chat is ON or OFF; reply `on` / `off` |
-| Reply `on` / `off` to an ON/OFF confirmation | switches that chat |
+| Write `exclude Mom` / `include Mom` in the *Ramble* group (a contact's or a group's name) | lists the matching chats if there are several, then asks; `yes` switches that chat. An excluded chat is not transcribed at all, your own voice notes included |
+| Forward a voice note from any chat into the *Ramble* group | its text + whether that chat is transcribed; reply `exclude` / `include` to switch it (it asks first) |
+| Write `exclude` or `include` alone | what is excluded / which groups are transcribed |
 | Reply `delete` to anything Ramble posted | deletes it for everyone |
 | Write `leave` in the *Ramble* group, then `yes` | unlinks the device and erases your account |
 | Write `help` in the *Ramble* group | the list of commands |

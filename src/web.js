@@ -476,7 +476,7 @@ ${DAILY_MINUTES_CAP ? `<p><b>A daily limit.</b> ${DAILY_MINUTES_CAP} minutes of 
 <section class="band"><div class="wrap"><h2>When you want more.</h2><p class="intro">You run ${NAME} by talking to it, in WhatsApp.</p>
 <div class="asks">
 <div class="ask"><div><h3>Turn on a group.</h3><p>Groups are off until you say so. Forward one voice note from the group into your ${NAME} group and reply on. Nothing is ever posted in the group itself.</p></div>
-${mini(`${NAME} group`, `${voice('0:32', true)}<div class="bot"><b>Family</b> is OFF. Reply <b>on</b> to transcribe it.</div><div class="me">${quote(NAME, 'Family is OFF. Reply on to transcribe it.')}on</div><div class="bot"><b>Family</b>: transcription ON. Reply <b>off</b> to stop.</div>`)}</div>
+${mini(`${NAME} group`, `${voice('0:32', true)}<div class="bot"><b>Family</b> is not transcribed. Reply <b>include</b> to start.</div><div class="me">${quote(NAME, 'Family is not transcribed. Reply include to start.')}include</div><div class="bot">Transcribe <b>Family (group)</b>? Reply <b>yes</b> to include it.</div>`)}</div>
 <div class="ask"><div><h3>Take a text back.</h3><p>Reply delete to any text ${NAME} posted, in any chat. It&#39;s removed for everyone.</p></div>
 ${mini('Any chat', `<div class="me">I&#39;m stuck in traffic, I&#39;ll be there in about twenty minutes. Start without me.</div><div class="me">${quote('You', 'I&#39;m stuck in traffic, I&#39;ll be there in about twenty minutes.')}delete</div>`)}</div>
 <div class="ask"><div><h3>Leave.</h3><p>Write leave in your ${NAME} group. It asks first. Say yes, and it logs the device out of your WhatsApp and erases everything about you here.</p></div>

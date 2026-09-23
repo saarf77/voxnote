@@ -31,7 +31,7 @@ import * as research from './research.js';
 import * as claims from './claims.js';
 import { normalizePhone } from './pairing.js';
 import { LOGO_MARK_SVG } from './logo.js';
-import { extractDictation, matchContacts, looksLikeDictation } from './dictate.js';
+import { extractDictation, matchContacts, looksLikeDictation, norm as normName } from './dictate.js';
 import { meter, bill } from './cost.js';
 
 // Bounded work: at most this many recordings in flight per account, and across
@@ -47,7 +47,7 @@ const OWNER_LABEL = 'me';
 export const LANGUAGES = [['', 'auto', 'Auto-detect', 'זיהוי אוטומטי'], ['he', 'hebrew', 'Hebrew', 'עברית'], ['en', 'english', 'English', 'אנגלית'], ['ar', 'arabic', 'Arabic', 'ערבית'], ['ru', 'russian', 'Russian', 'רוסית'], ['es', 'spanish', 'Spanish', 'ספרדית'], ['fr', 'french', 'French', 'צרפתית'], ['de', 'german', 'German', 'גרמנית'], ['pt', 'portuguese', 'Portuguese', 'פורטוגזית'], ['it', 'italian', 'Italian', 'איטלקית']];
 /** "hebrew", "Hebrew", "he", "auto" → its row; anything else → null. */
 export const findLanguage = (word) => { const w = String(word || '').trim().toLowerCase(); return LANGUAGES.find(([code, name]) => w === name || (code && w === code)) || null; };
-// Every command is ONE English word — on, off, delete, yes, no, undo, leave, help, names —
+// Every command is ONE English word — include, exclude, delete, yes, no, undo, leave, help, names —
 // so there is never a question of which one to write. No synonyms, no translations.
 const TARGET_KEYWORD = '#transcribe'; // manual fallback for arming the control group
 const PENDING_LEAVE_TTL_MS = 10 * 60e3;
@@ -60,6 +60,7 @@ export const spokenAnswer = (text) => { const w = String(text || '').toLowerCase
 const YIELD_MS = Number(process.env.CLAIM_YIELD_MS ?? 1500);
 const CLAIM_WAIT_MS = Number(process.env.CLAIM_WAIT_MS ?? 180e3);
 const PENDING_SEND_TTL_MS = 10 * 60e3; // how long "reply with the number" stays open
+const PENDING_SWITCH_TTL_MS = 10 * 60e3; // how long an include/exclude question stays open
 export const TRANSCRIBE_VIDEO = process.env.TRANSCRIBE_VIDEO !== '0';
 const TRANSCRIBE_MIN_SECONDS = Number(process.env.TRANSCRIBE_MIN_SECONDS ?? 1) || 0;
 // A single recording longer than this is not transcribed: one forwarded lecture
@@ -153,6 +154,7 @@ export class Tenant {
     this.ownPosts = new Set();   // ids of messages we posted (memory only): their echo must never be read as the owner's answer
     this.pendingSend = null;     // a dictated message waiting for the owner to pick the recipient
     this.pendingLeave = null;    // "leave" was written in the control group; waiting for the yes
+    this.pendingSwitch = null;   // include/exclude of a chat: waiting for the pick and the yes
     this.seen = new Set(loadJson(this.f('seen.json'), []));         // message ids already handled
     this.glossary = createGlossary(this.f('glossary.json'));
     this.usage = loadJson(this.f('usage.json'), { day: '', seconds: 0, notified: false });
@@ -276,7 +278,7 @@ export class Tenant {
 
 • כל הודעה קולית שנשלחת ממך, בכל צ'אט, מקבלת טקסט ממש מתחתיה.
 • גם הודעות קוליות שמגיעות אליך בצ'אטים פרטיים.
-• קבוצות כבויות. כדי להפעיל קבוצה: להעביר ממנה הודעה קולית לכאן ולענות *on*.
+• קבוצות כבויות. כדי להפעיל קבוצה: לכתוב כאן *include* ואת שם הקבוצה.
 • כדי להפסיק להשתמש: לכתוב כאן *leave*.
 • לרשימת הפקודות: לכתוב כאן *help*.
 
@@ -288,7 +290,7 @@ It's linked to your WhatsApp. This group is your control panel, and only you are
 
 • Every voice note you send, in any chat, gets its text right under it.
 • So do the voice notes people send you in private chats.
-• Groups are off. To turn one on, forward a voice note from it to here and reply *on*.
+• Groups are off. To turn one on, write *include* and the group's name here.
 • To stop using ${PRODUCT_NAME}, write *leave* here.
 • For the list of commands, write *help* here.
 
@@ -301,7 +303,7 @@ Recordings are deleted the moment they become text.
     if (this.ownerLocale() === 'he') return `*הפקודות של ${PRODUCT_NAME}*
 כל פקודה היא מילה אחת באנגלית.
 
-• הפעלה וכיבוי של צ'אט, *on* / *off*: להעביר לכאן הודעה קולית מהצ'אט, ולענות לטקסט שלה *on* או *off*. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
+• הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה (למשל *exclude אמא*), ו-*include* כדי להחזיר. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההקלטות שלך. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
 • שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
 • עצירה והמשך, *pause* / *resume*: לכתוב כאן כדי לעצור את כל התמלולים, ולהמשיך מתי שרוצים.
@@ -310,7 +312,7 @@ Recordings are deleted the moment they become text.
     return `*${PRODUCT_NAME} commands*
 Each one is a single word.
 
-• *on* / *off*: forward a voice note from any chat to here, then reply *on* or *off* to its text to switch that chat. Groups start off, private chats start on.
+• *include* / *exclude*: write it here with a contact's or a group's name (*exclude Mom*) to switch that chat, or reply it to a forwarded recording's text. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included. Groups start off, private chats start on.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
 • *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
 • *pause* / *resume*: write it here to stop all transcription for a while, and to start again.
@@ -489,7 +491,9 @@ Each one is a single word.
     const senderName = fromMe ? OWNER_LABEL : (m.pushName || null);
     const ext = content.extendedTextMessage;
     const quoted = ext?.contextInfo?.stanzaId ? ext.contextInfo : null;
-    return { id: m.key.id, chatId, isGroup, fromMe, senderName, type, body, hasMedia, isVoice, mimetype, mediaSha, mediaNode, seconds, expiration, forwarded, quoted };
+    // The same private chat may arrive under a phone id or a lid; WhatsApp sends the other one along.
+    const chatAlt = m.key.remoteJidAlt ? jidNormalizedUser(m.key.remoteJidAlt) : null;
+    return { id: m.key.id, chatId, chatAlt, isGroup, fromMe, senderName, type, body, hasMedia, isVoice, mimetype, mediaSha, mediaNode, seconds, expiration, forwarded, quoted };
   }
 
   async onMessage(m, sock) {
@@ -523,9 +527,10 @@ Each one is a single word.
 
     let want;
     if (inControl) want = true;                                                       // probe: always
-    else if (n.fromMe && n.isVoice) want = true;                                      // owner's notes: everywhere
+    else if (this.isExcluded(n)) want = false;                                        // excluded by the owner: nothing, their own notes included
+    else if (n.fromMe && n.isVoice) want = true;                                      // owner's notes: everywhere else
     else if (n.isGroup) want = this.enabled.has(n.chatId) && !this.archived.has(n.chatId);
-    else want = !this.muted.has(n.chatId) && !this.archived.has(n.chatId);
+    else want = !this.archived.has(n.chatId);
     if (!want) return;
     // Paused by the owner: nothing is transcribed, nowhere. A recording in the group gets a reminder.
     if (this.paused) {
@@ -754,8 +759,10 @@ Each one is a single word.
     let tail;
     if (!src) tail = "_(Couldn't tell which chat this came from — only recordings I saw arrive can be traced.)_";
     else {
-      const on = src.chatId.endsWith('@g.us') ? this.enabled.has(src.chatId) : !this.muted.has(src.chatId);
-      tail = on ? `🟢 *«${src.name}»* is ON. Reply *off* to stop transcribing it.` : `🔇 *«${src.name}»* is OFF. Reply *on* to transcribe it.`;
+      const on = this.chatIncluded(src.chatId);
+      tail = this.ownerLocale() === 'he'
+        ? (on ? `🟢 מתומלל: *«${src.name}»*. כדי להפסיק, לענות *exclude*.` : `🔇 לא מתומלל: *«${src.name}»*. כדי לתמלל, לענות *include*.`)
+        : (on ? `🟢 *«${src.name}»* is transcribed. Reply *exclude* to stop.` : `🔇 *«${src.name}»* is not transcribed. Reply *include* to start.`);
     }
     this.sendPaced(this.target.jid, { text: `${isVideo ? '🎬' : '🎙️'} ${src ? `from *${src.name}*` : 'forwarded recording'}\n${body}\n\n${tail}` }, { quoted: original })
       .then((sent) => { if (src && sent?.key?.id) this.recordFwd(sent.key.id, src); })
@@ -776,6 +783,7 @@ Each one is a single word.
     const traceable = !!(n.mediaSha && this.mediaSrc.has(n.mediaSha));
     // A question of ours is open and the owner answered it out loud ("yes", "כן", "שתיים").
     if (!traceable && !n.forwarded && n.isVoice && this.pendingSend && await this.handleDictationReply(original, n, spokenAnswer(content))) return;
+    if (!traceable && !n.forwarded && n.isVoice && this.pendingSwitch && await this.handleSwitchReply(original, n, spokenAnswer(content))) return;
     const cue = looksLikeDictation(content);
     this.trace('control.note', { id: n.id, traceable, forwarded: n.forwarded, isVoice: n.isVoice, cue });
     if (!traceable && !n.forwarded && n.isVoice && cue) {
@@ -826,7 +834,7 @@ Each one is a single word.
       ? `✉️ Send to *${label(certain)}*?\n«${text}»\n\nReply *yes* to send, *no* to drop it — typed or spoken.${others}`
       : `🤔 Not sure who *${to}* is:\n${list.map((c, i) => `${i + 1}. ${label(c)}`).join('\n')}\n\nReply with the number to send them:\n«${text}»\n\nReply *no* to drop it.`;
     const sent = await this.sendPaced(this.target.jid, { text: ask }, quoted).catch(() => null);
-    this.pendingLeave = null; // the newest question owns the next "yes"
+    this.pendingLeave = null; this.pendingSwitch = null; // the newest question owns the next "yes"
     this.pendingSend = { postId: sent?.key?.id || null, candidates: list, proposed: !!certain, text, at: Date.now() };
   }
 
@@ -885,7 +893,7 @@ Each one is a single word.
     if (this.ownPosts.has(n.id)) return false;
     const he = this.ownerLocale() === 'he';
     if (lower === 'leave') {
-      this.pendingSend = null;
+      this.pendingSend = null; this.pendingSwitch = null;
       const sent = await this.sendPaced(n.chatId, { text: he
         ? `⚠️ לנתק את *${PRODUCT_NAME}* מהוואטסאפ שלך ולמחוק את כל מה ששמור עליך כאן?\n\nלענות *yes* כדי להתנתק, *no* כדי להמשיך כרגיל.`
         : `⚠️ Unlink *${PRODUCT_NAME}* from your WhatsApp and erase everything about you here?\n\nReply *yes* to leave, *no* to carry on.` }, { quoted: m }).catch(() => null);
@@ -909,17 +917,161 @@ Each one is a single word.
     return true;
   }
 
-  setChatEnabled({ chatId, name }, enable) {
-    const isGroup = chatId.endsWith('@g.us');
-    if (isGroup) { enable ? this.enabled.add(chatId) : this.enabled.delete(chatId); this.saveSet('enabled.json', this.enabled); }
-    else { enable ? this.muted.delete(chatId) : this.muted.add(chatId); this.saveSet('muted.json', this.muted); }
-    console.log(`${this.tag} ${enable ? '🟢 ON' : '🔇 OFF'}: a ${isGroup ? 'group' : 'private chat'}`);
-    const text = enable
-      ? `🟢 *${name}* — transcription ON. Text will appear inside the chat, under each recording. Reply *off* to this message to stop.`
-      : `🔇 *${name}* — transcription OFF. Reply *on* to this message to resume.`;
-    this.sendPaced(this.target.jid, { text })
-      .then((sent) => { if (sent?.key?.id) this.recordFwd(sent.key.id, { chatId, name }); })
-      .catch(() => {});
+  // ---------- include / exclude a chat ----------
+  /** True when this recording's chat was excluded by the owner, under either of its ids. */
+  isExcluded(n) { return this.muted.has(n.chatId) || (!!n.chatAlt && this.muted.has(n.chatAlt)); }
+  /** Whether other people's recordings in this chat are transcribed. */
+  chatIncluded(chatId) { return chatId.endsWith('@g.us') ? this.enabled.has(chatId) && !this.muted.has(chatId) : !this.muted.has(chatId); }
+
+  /** Every id WhatsApp may use for this private chat: the phone id and the lid, when the mapping is known. */
+  async chatIdsFor(jid) {
+    const ids = new Set([jid]);
+    if (jid.endsWith('@g.us')) return [...ids];
+    const map = this.sock?.signalRepository?.lidMapping;
+    try {
+      if (jid.endsWith('@lid')) { const pn = await map?.getPNForLID(jid); if (pn) ids.add(jidNormalizedUser(pn)); }
+      else { const lid = await map?.getLIDForPN(jid); if (lid) ids.add(jidNormalizedUser(lid)); }
+    } catch { /* mapping unavailable: the id we have still counts */ }
+    return [...ids];
+  }
+
+  /** Contacts and groups the owner can name, as jid → name. Never the control group or Notes to self. */
+  async switchDirectory() {
+    if (this.sock?.groupFetchAllParticipating && (!this._groupsAt || Date.now() - this._groupsAt > 10 * 60e3)) {
+      try {
+        const all = await this.sock.groupFetchAllParticipating();
+        for (const [jid, meta] of Object.entries(all || {})) if (meta?.subject) this.groupNames.set(jid, meta.subject);
+        this._groupsAt = Date.now();
+      } catch { /* offline: the groups seen so far */ }
+    }
+    const dir = new Map();
+    for (const [jid, name] of this.contactNames) if (name && !this.isSelfChat(jid)) dir.set(jid, name);
+    for (const [jid, name] of this.groupNames) if (name && jid !== this.target?.jid) dir.set(jid, name);
+    return dir;
+  }
+
+  /**
+   * The chats a typed name may mean, one option per chat. Different people who share a name stay
+   * separate options, told apart by the end of their number; the phone id and the lid of the same
+   * person are one option.
+   */
+  async switchOptions(name) {
+    const dir = await this.switchDirectory();
+    const { candidates } = matchContacts(name, dir, { activity: this.activity, max: 8 });
+    const options = [];
+    for (const c of candidates) {
+      // matchContacts folds everything with the same name into one; unfold it into the chats behind it.
+      const same = [...dir].filter(([, v]) => normName(v) === normName(c.name)).map(([jid]) => jid);
+      const people = [];
+      for (const jid of same) {
+        const ids = await this.chatIdsFor(jid);
+        const known = people.find((p) => p.ids.some((id) => ids.includes(id)));
+        if (known) { for (const id of ids) if (!known.ids.includes(id)) known.ids.push(id); if (jid.endsWith('@s.whatsapp.net')) known.chatId = jid; }
+        else people.push({ chatId: jid, ids, name: String(dir.get(jid)).trim(), isGroup: jid.endsWith('@g.us') });
+      }
+      options.push(...people);
+    }
+    return options.slice(0, 9);
+  }
+
+  switchLabel(o) {
+    const he = this.ownerLocale() === 'he';
+    if (o.isGroup) return `${o.name} (${he ? 'קבוצה' : 'group'})`;
+    const phone = o.ids.find((id) => id.endsWith('@s.whatsapp.net'));
+    return phone ? `${o.name} (…${phone.split('@')[0].slice(-4)})` : o.name;
+  }
+
+  /** "include Mom" / "exclude Mom", or either word as a reply to a forwarded recording: find the chat, then ask. */
+  async askSwitch(m, n, action, name) {
+    const he = this.ownerLocale() === 'he';
+    let options;
+    if (!name && n.quoted) {
+      const src = this.resolveQuotedSource(n.quoted.stanzaId, n.quoted);
+      options = src ? [{ chatId: src.chatId, ids: await this.chatIdsFor(src.chatId), name: src.name, isGroup: src.chatId.endsWith('@g.us') }] : [];
+      if (!options.length) {
+        await this.sendPaced(n.chatId, { text: he ? `🤷 לא ברור על איזה צ'אט מדובר. לכתוב *${action}* ואת השם.` : `🤷 Couldn't tell which chat that's about. Write *${action}* and the name.` }, { quoted: m }).catch(() => {});
+        return;
+      }
+    } else if (!name) {
+      await this.sendPaced(n.chatId, { text: this.switchStatus(action) }, { quoted: m }).catch(() => {});
+      return;
+    } else options = await this.switchOptions(name);
+    this.trace('switch.match', { action, name, options: options.map((o) => ({ chatId: o.chatId, ids: o.ids, name: o.name })) });
+    if (!options.length) {
+      await this.sendPaced(n.chatId, { text: he ? `🤷 לא מצאתי איש קשר או קבוצה בשם *${name}*. שום דבר לא השתנה.` : `🤷 No contact or group called *${name}*. Nothing changed.` }, { quoted: m }).catch(() => {});
+      return;
+    }
+    this.pendingSend = null; this.pendingLeave = null; // the newest question owns the next "yes"
+    if (options.length === 1) { await this.confirmSwitch(m, n.chatId, action, options, options[0]); return; }
+    const list = options.map((o, i) => `${i + 1}. ${this.switchLabel(o)}`).join('\n');
+    const sent = await this.sendPaced(n.chatId, { text: he
+      ? `🤔 למי הכוונה?\n${list}\n\nלענות במספר, או *no* כדי לבטל.`
+      : `🤔 Which one?\n${list}\n\nReply with the number, or *no* to cancel.` }, { quoted: m }).catch(() => null);
+    this.pendingSwitch = { postId: sent?.key?.id || null, action, options, chosen: null, at: Date.now() };
+  }
+
+  /** The last step, always: name the one chat that would change, and wait for a yes. */
+  async confirmSwitch(m, chatId, action, options, chosen) {
+    const he = this.ownerLocale() === 'he';
+    const label = this.switchLabel(chosen);
+    const text = action === 'exclude'
+      ? (he ? `🔇 להחריג את *${label}*?\nשום הקלטה בצ'אט הזה לא תתומלל, גם לא ההקלטות שלך.\n\nלענות *yes* כדי להחריג, *no* כדי לבטל.`
+        : `🔇 Exclude *${label}*?\nNo recording in this chat will be transcribed, your own voice notes included.\n\nReply *yes* to exclude, *no* to cancel.`)
+      : (he ? `🟢 לתמלל את *${label}*?\nהקלטות בצ'אט הזה יקבלו טקסט מתחתיהן.\n\nלענות *yes* כדי לתמלל, *no* כדי לבטל.`
+        : `🟢 Transcribe *${label}*?\nRecordings in this chat will get their text under them.\n\nReply *yes* to include it, *no* to cancel.`);
+    const sent = await this.sendPaced(chatId, { text }, m ? { quoted: m } : {}).catch(() => null);
+    this.pendingSwitch = { postId: sent?.key?.id || null, action, options, chosen, at: Date.now() };
+  }
+
+  /** An answer to an include/exclude question: a number picks, yes applies, no cancels. */
+  async handleSwitchReply(m, n, lower) {
+    if (this.ownPosts.has(n.id)) return false;
+    const p = this.pendingSwitch;
+    if (!p || Date.now() - p.at > PENDING_SWITCH_TTL_MS || (n.quoted && n.quoted.stanzaId !== p.postId)) return false;
+    const he = this.ownerLocale() === 'he';
+    if (lower === 'no') {
+      this.pendingSwitch = null;
+      await this.sendPaced(n.chatId, { text: he ? '👌 בוטל. שום דבר לא השתנה.' : '👌 Cancelled. Nothing changed.' }, { quoted: m }).catch(() => {});
+      return true;
+    }
+    if (!p.chosen) {
+      const pick = /^\d{1,2}$/.test(lower) ? p.options[Number(lower) - 1] : null;
+      if (!pick) return false;
+      await this.confirmSwitch(m, n.chatId, p.action, p.options, pick);
+      return true;
+    }
+    if (lower !== 'yes') return false;
+    this.pendingSwitch = null;
+    await this.applySwitch(p.chosen, p.action === 'include');
+    return true;
+  }
+
+  /** Switch the chat, under every id it may arrive with, and say so in the control group. */
+  async applySwitch({ chatId, ids, name, isGroup }, include) {
+    const all = new Set([...(ids || []), ...(await this.chatIdsFor(chatId))]);
+    if (isGroup) { include ? this.enabled.add(chatId) : this.enabled.delete(chatId); this.saveSet('enabled.json', this.enabled); }
+    for (const id of all) include ? this.muted.delete(id) : this.muted.add(id);
+    this.saveSet('muted.json', this.muted);
+    console.log(`${this.tag} ${include ? '🟢 included' : '🔇 excluded'}: a ${isGroup ? 'group' : 'private chat'}`);
+    const he = this.ownerLocale() === 'he';
+    const text = include
+      ? (he ? `🟢 בוצע: *${name}* מתומלל. הטקסט יופיע בצ'אט, מתחת לכל הקלטה. כדי להפסיק: *exclude ${name}*.` : `🟢 Done: *${name}* is transcribed. The text appears in the chat, under each recording. To stop: *exclude ${name}*.`)
+      : (he ? `🔇 בוצע: *${name}* מוחרג. שום הקלטה בו לא מתומללת. כדי להחזיר: *include ${name}*.` : `🔇 Done: *${name}* is excluded. Nothing in it is transcribed. To bring it back: *include ${name}*.`);
+    const sent = await this.sendPaced(this.target.jid, { text }).catch(() => null);
+    if (sent?.key?.id) this.recordFwd(sent.key.id, { chatId, name });
+  }
+
+  /** "exclude" or "include" alone: what is switched now, and how to switch a chat. */
+  switchStatus(action) {
+    const he = this.ownerLocale() === 'he';
+    const nameOf = (jid) => this.contactNames.get(jid) || this.groupNames.get(jid) || null;
+    const names = (ids) => [...new Set([...ids].map(nameOf).filter(Boolean))];
+    const excluded = names(this.muted), included = names([...this.enabled].filter((j) => !this.muted.has(j)));
+    const list = action === 'exclude' ? excluded : included;
+    const head = action === 'exclude'
+      ? (he ? (list.length ? `🔇 מוחרגים: ${list.join(', ')}` : "🔇 אין צ'אטים מוחרגים.") : (list.length ? `🔇 Excluded: ${list.join(', ')}` : '🔇 No chat is excluded.'))
+      : (he ? (list.length ? `🟢 קבוצות מתומללות: ${list.join(', ')}` : '🟢 אף קבוצה לא מתומללת.') : (list.length ? `🟢 Groups transcribed: ${list.join(', ')}` : '🟢 No group is transcribed.'));
+    return `${head}\n${he ? `כדי לשנות: *${action}* ואת השם, למשל *${action} אמא*.` : `To switch one: *${action}* and the name, e.g. *${action} Mom*.`}`;
   }
 
   resolveQuotedSource(quotedId, contextInfo) {
@@ -980,11 +1132,11 @@ Each one is a single word.
     if (inControl && n.fromMe && !n.hasMedia && await this.handleLeave(m, n, lower)) return true;
     // A dictated message waiting for a recipient, or one to take back.
     if (inControl && n.fromMe && !n.hasMedia && await this.handleDictationReply(m, n, lower)) return true;
-    // on / off, as a reply to one of our control-group posts.
-    if (inControl && n.fromMe && n.quoted && (lower === 'on' || lower === 'off')) {
-      const src = this.resolveQuotedSource(n.quoted.stanzaId, n.quoted);
-      if (!src) await this.sendPaced(n.chatId, { text: "Couldn't tell which chat that's about. Reply to a forwarded recording's text or to an ON/OFF confirmation." }).catch(() => {});
-      else this.setChatEnabled(src, lower === 'on');
+    // include / exclude a chat: by name, or as a reply to a forwarded recording's text. Always asks first.
+    if (inControl && n.fromMe && !n.hasMedia && !this.ownPosts.has(n.id) && await this.handleSwitchReply(m, n, lower)) return true;
+    const sw = /^(include|exclude)(?:\s+([\s\S]+))?$/i.exec(txt);
+    if (inControl && n.fromMe && !n.hasMedia && sw && !this.ownPosts.has(n.id)) {
+      await this.askSwitch(m, n, sw[1].toLowerCase(), (sw[2] || '').trim());
       return true;
     }
     // delete, as a reply to any post of ours: revoke it for everyone, then the command.
