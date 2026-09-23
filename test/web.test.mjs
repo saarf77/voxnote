@@ -69,15 +69,15 @@ test('rotating the key invalidates the old link', async () => {
 
 test('cross-site POSTs are refused, same-site ones pass', async () => {
   const cookie = `rl=${t.id}.${t.manageKey}`;
-  const cross = await fetch(`${base}/link/${t.id}/language`, { method: 'POST', headers: { cookie, origin: 'https://evil.example', 'content-type': 'application/x-www-form-urlencoded' }, body: 'language=en', redirect: 'manual' });
+  const cross = await fetch(`${base}/link/${t.id}/code`, { method: 'POST', headers: { cookie, origin: 'https://evil.example', 'content-type': 'application/x-www-form-urlencoded' }, body: 'phone=15550100001', redirect: 'manual' });
   assert.equal(cross.status, 403);
-  const fetchSite = await fetch(`${base}/link/${t.id}/language`, { method: 'POST', headers: { cookie, 'sec-fetch-site': 'cross-site', 'content-type': 'application/x-www-form-urlencoded' }, body: 'language=en', redirect: 'manual' });
+  const fetchSite = await fetch(`${base}/link/${t.id}/code`, { method: 'POST', headers: { cookie, 'sec-fetch-site': 'cross-site', 'content-type': 'application/x-www-form-urlencoded' }, body: 'phone=15550100001', redirect: 'manual' });
   assert.equal(fetchSite.status, 403);
-  const same = await fetch(`${base}/link/${t.id}/language`, { method: 'POST', headers: { cookie, origin: base, 'content-type': 'application/x-www-form-urlencoded' }, body: 'language=en', redirect: 'manual' });
-  assert.equal(same.status, 303); assert.equal(t.language, 'en');
+  const same = await fetch(`${base}/link/${t.id}/code`, { method: 'POST', headers: { cookie, origin: base, 'content-type': 'application/x-www-form-urlencoded' }, body: 'phone=15550100001', redirect: 'manual' });
+  assert.equal(same.status, 303); assert.equal(t.pairPhone, '15550100001');
   // A browser that withholds the origin sends "Origin: null": our own form still goes through, a foreign one does not.
-  const post = (h) => fetch(`${base}/link/${t.id}/language`, { method: 'POST', headers: { cookie, origin: 'null', 'content-type': 'application/x-www-form-urlencoded', ...h }, body: 'language=he', redirect: 'manual' });
-  assert.equal((await post({ 'sec-fetch-site': 'same-origin' })).status, 303); assert.equal(t.language, 'he');
+  const post = (h) => fetch(`${base}/link/${t.id}/code`, { method: 'POST', headers: { cookie, origin: 'null', 'content-type': 'application/x-www-form-urlencoded', ...h }, body: 'phone=15550100002', redirect: 'manual' });
+  assert.equal((await post({ 'sec-fetch-site': 'same-origin' })).status, 303); assert.equal(t.pairPhone, '15550100002'); t.usePairingQr();
   assert.equal((await post({ 'sec-fetch-site': 'cross-site' })).status, 403);
   assert.equal((await post({})).status, 403, 'a null origin with nothing to vouch for it is refused');
   const adminCross = await fetch(`${base}/admin/link/${t.id}`, { method: 'POST', headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64'), origin: 'https://evil.example' } });
@@ -178,7 +178,7 @@ test('linked: one call to action into WhatsApp, the tools folded away, nothing l
   assert.equal(api.waMe, 'https://wa.me/15550100000');
   const html = await (await fetch(`${base}/link/${t.id}`, { headers: { cookie } })).text();
   assert.match(html, /id="fx"/); assert.match(html, /Open WhatsApp/); assert.match(html, /record your first voice note/);
-  assert.ok(!/Keep this page|Then send someone|Leave it on auto/.test(html));
+  assert.ok(!/Keep this page|Then send someone|Leave it on auto|id="lang"/.test(html), 'no language selector: that is set from WhatsApp');
   t.ownId = null;
   assert.equal((await (await fetch(`${base}/api/link/${t.id}`, { headers: { cookie } })).json()).waMe, null);
 });

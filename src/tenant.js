@@ -42,6 +42,10 @@ const globalSlots = createSemaphore(GLOBAL_CONCURRENCY);
 
 export const PRODUCT_NAME = process.env.PRODUCT_NAME || 'Ramble';
 const OWNER_LABEL = 'me';
+// The languages an owner can pin, by code: set with "language <name>" in the control group ('' = auto-detect).
+export const LANGUAGES = [['', 'auto', 'Auto-detect', 'זיהוי אוטומטי'], ['he', 'hebrew', 'Hebrew', 'עברית'], ['en', 'english', 'English', 'אנגלית'], ['ar', 'arabic', 'Arabic', 'ערבית'], ['ru', 'russian', 'Russian', 'רוסית'], ['es', 'spanish', 'Spanish', 'ספרדית'], ['fr', 'french', 'French', 'צרפתית'], ['de', 'german', 'German', 'גרמנית'], ['pt', 'portuguese', 'Portuguese', 'פורטוגזית'], ['it', 'italian', 'Italian', 'איטלקית']];
+/** "hebrew", "Hebrew", "he", "auto" → its row; anything else → null. */
+export const findLanguage = (word) => { const w = String(word || '').trim().toLowerCase(); return LANGUAGES.find(([code, name]) => w === name || (code && w === code)) || null; };
 // Every command is ONE English word — on, off, delete, yes, no, undo, leave, help, names —
 // so there is never a question of which one to write. No synonyms, no translations.
 const TARGET_KEYWORD = '#transcribe'; // manual fallback for arming the control group
@@ -289,6 +293,7 @@ Recordings are deleted the moment they become text.
 
 • הפעלה וכיבוי של צ'אט, *on* / *off*: להעביר לכאן הודעה קולית מהצ'אט, ולענות לטקסט שלה *on* או *off*. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
+• שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
 • התנתקות, *leave*: לכתוב כאן כדי לנתק את ${PRODUCT_NAME} ולמחוק את החשבון. נשאלת קודם שאלה, ועונים לה *yes* או *no*.
 • הרשימה הזו: *help*.`;
     return `*${PRODUCT_NAME} commands*
@@ -296,8 +301,29 @@ Each one is a single word.
 
 • *on* / *off*: forward a voice note from any chat to here, then reply *on* or *off* to its text to switch that chat. Groups start off, private chats start on.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
+• *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
 • *leave*: write it here to unlink ${PRODUCT_NAME} and erase your account. It asks first; answer *yes* or *no*.
 • *help*: this list.`;
+  }
+
+  /** Answer "language" (show it) or "language <name>" (set it). */
+  languageReply(word) {
+    const he = this.ownerLocale() === 'he';
+    const label = (row) => (he ? row[3] : row[2]);
+    const names = LANGUAGES.map((r) => r[1]).join(', ');
+    if (!word) {
+      const cur = LANGUAGES.find((r) => r[0] === (this.language || '')) || LANGUAGES[0];
+      return he
+        ? `🌐 שפת התמלול: *${label(cur)}*.\nכדי לקבוע שפה, לכתוב כאן *language* ואחריה אחת מאלה: ${names}.`
+        : `🌐 Transcription language: *${label(cur)}*.\nTo fix it, write *language* and one of: ${names}.`;
+    }
+    const row = findLanguage(word);
+    if (!row) return he ? `🤷 לא מכיר את השפה הזו. אפשר לבחור מאלה: ${names}.` : `🤷 I don't know that one. Pick from: ${names}.`;
+    this.setLanguage(row[0]);
+    if (!row[0]) return he ? '🌐 חזרנו לזיהוי אוטומטי: השפה של כל הקלטה מזוהה לבד.' : "🌐 Back to auto-detect: each recording's language is worked out on its own.";
+    return he
+      ? `🌐 שפת התמלול נקבעה: *${label(row)}*. כל הקלטה תתומלל בשפה הזו. *language auto* מחזיר לזיהוי אוטומטי.`
+      : `🌐 Transcription language set to *${label(row)}*. Every recording is transcribed as ${label(row)} now. *language auto* goes back to detecting it.`;
   }
 
   // ---------- state persistence ----------
@@ -882,6 +908,12 @@ Each one is a single word.
     }
     if (inControl && n.fromMe && !n.hasMedia && lower === 'help' && !this.ownPosts.has(n.id)) {
       await this.sendPaced(n.chatId, { text: this.helpText() }, { quoted: m }).catch(() => {});
+      return true;
+    }
+    // language, or language <name>: the transcription language, set from WhatsApp.
+    const lang = /^language(?:\s*:?\s*(\S+))?$/.exec(lower);
+    if (inControl && n.fromMe && !n.hasMedia && lang && !this.ownPosts.has(n.id)) {
+      await this.sendPaced(n.chatId, { text: this.languageReply(lang[1]) }, { quoted: m }).catch(() => {});
       return true;
     }
     // leave, then yes: unlink and erase, from inside WhatsApp.

@@ -291,7 +291,21 @@ test('help lists the commands, one word each, in the owner\'s language, and leav
 test('every line of a Hebrew message opens with a Hebrew letter, so WhatsApp lays it out right-to-left', async () => {
   const t = tenant(); t.locale = 'he'; t.onLeave = async () => {};
   await text(t, 'leave'); await text(t, 'no'); await text(t, 'leave'); await text(t, 'yes');
-  const texts = [t.welcomeText(), t.helpText(), ...t.out.map((o) => o.text)];
-  assert.equal(texts.length, 6); assert.match(texts[0], /^ברוכים הבאים ל-/);
+  const texts = [t.welcomeText(), t.helpText(), t.languageReply(), t.languageReply('hebrew'), t.languageReply('auto'), t.languageReply('klingon'), ...t.out.map((o) => o.text)];
+  assert.equal(texts.length, 10); assert.match(texts[0], /^ברוכים הבאים ל-/);
   for (const line of texts.flatMap((x) => x.split('\n')).filter((l) => l.trim())) assert.match(line.match(/\p{L}/u)[0], /[\u0590-\u05FF]/, line);
 });
+
+test('language, from the control group: shown, set by name or code, back to auto, and an unknown one changes nothing', async () => {
+  const t = tenant(); t.setLanguage('');
+  assert.equal(await text(t, 'language'), true);
+  assert.match(t.out.at(-1).text, /Transcription language: \*Auto-detect\*/); assert.match(t.out.at(-1).text, /hebrew, english/);
+  assert.equal(await text(t, 'Language Hebrew'), true); assert.equal(t.language, 'he'); assert.match(t.out.at(-1).text, /set to \*Hebrew\*/);
+  assert.equal(await text(t, 'language: en'), true); assert.equal(t.language, 'en');
+  assert.equal(await text(t, 'language klingon'), true); assert.equal(t.language, 'en'); assert.match(t.out.at(-1).text, /don't know/);
+  assert.equal(await text(t, 'language auto'), true); assert.equal(t.language, ''); assert.match(t.out.at(-1).text, /auto-detect/);
+  assert.equal(await text(t, 'the language here is odd'), false, 'only the command itself');
+  t.locale = 'he'; await text(t, 'language');
+  assert.match(t.out.at(-1).text, /שפת התמלול: \*זיהוי אוטומטי\*/);
+});
+

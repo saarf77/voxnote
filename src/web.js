@@ -16,7 +16,7 @@ import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import * as registry from './registry.js';
-import { PRODUCT_NAME, DAILY_MINUTES_CAP } from './tenant.js';
+import { LANGUAGES, PRODUCT_NAME, DAILY_MINUTES_CAP } from './tenant.js';
 import { PLANS, planLabel } from './transcribe.js';
 import { GLOBAL_DAILY_MINUTES, secondsToday } from './budget.js';
 import * as research from './research.js';
@@ -31,7 +31,6 @@ const CANONICAL_HOST = (process.env.CANONICAL_HOST || '').toLowerCase();
 const LEGACY_HOSTS = new Set((process.env.LEGACY_HOSTS || '').toLowerCase().split(',').map((h) => h.trim()).filter(Boolean));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || process.env.DASHBOARD_PASSWORD || '';
 const INVITE_CODE = process.env.INVITE_CODE || ''; // optional: closed beta behind a code
-const LANGUAGES = [['', 'Auto-detect'], ['he', 'Hebrew'], ['en', 'English'], ['ar', 'Arabic'], ['ru', 'Russian'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['pt', 'Portuguese'], ['it', 'Italian']];
 const KEY_RE = /^[0-9a-f]{32}$/;
 const ID_RE = /^[a-z0-9]{1,64}$/;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -56,8 +55,6 @@ function guessLanguage(acceptLanguage = '') {
   const first = String(acceptLanguage).split(',')[0]?.trim().toLowerCase().split('-')[0] || '';
   return LANGUAGES.some(([v]) => v && v === first) ? first : '';
 }
-const langSelect = (selected = '', name = 'language') =>
-  `<select name="${name}" id="lang">${LANGUAGES.map(([v, l]) => `<option value="${v}"${v === selected ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
 const mark = `<a class="mark" href="/">${LOGO_SVG}<span>${esc(PRODUCT_NAME)}</span></a>`;
 // A voice note and its text, drawn as a chat — the product in one glance.
 const WAVE_SVG = `<svg class="wave" width="130" height="22" viewBox="0 0 130 22" aria-hidden="true">${[6, 10, 16, 8, 20, 12, 7, 14, 18, 9, 5, 13, 17, 11, 6, 15, 19, 8, 12, 7, 16, 10, 5, 9, 14, 6].map((h, i) => `<rect x="${i * 5}" y="${(22 - h) / 2}" width="3" height="${h}" rx="1.5" fill="currentColor"/>`).join('')}</svg>`;
@@ -409,7 +406,6 @@ ${FOOT}`, { wide: true, nav: NAV })));
 <div id="box"><span class="pill"><i></i>Starting…</span></div>
 <form method="post" action="/link/${t.id}/qr" id="toqr" hidden></form>
 <div class="tools">
-<form method="post" action="/link/${t.id}/language"><label for="lang">Language</label>${langSelect(t.language)}<button class="btn" type="submit">Save</button></form>
 <form method="post" action="/unlink/${t.id}" id="unlink"><button class="quiet" type="submit">Unlink and erase everything</button><span class="muted">Or write <b>leave</b> in your ${esc(PRODUCT_NAME)} group.</span></form>
 </div>
 <a class="back" href="/privacy">Privacy &amp; terms</a>`, { poll: `
@@ -456,13 +452,6 @@ tick();` }));
     const t = auth(req, res); if (!t) return;
     t.usePairingQr();
     res.redirect(303, `/link/${t.id}?via=qr`);
-  });
-
-  app.post('/link/:id/language', (req, res) => {
-    const t = auth(req, res); if (!t) return;
-    const code = String(req.body.language || '');
-    if (LANGUAGES.some(([v]) => v === code)) t.setLanguage(code);
-    res.redirect(303, `/link/${t.id}`);
   });
 
   app.post('/unlink/:id', async (req, res) => {
