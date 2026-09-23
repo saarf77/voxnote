@@ -22,7 +22,7 @@ import { GLOBAL_DAILY_MINUTES, secondsToday } from './budget.js';
 import * as research from './research.js';
 import { dataDirIsMount } from './paths.js';
 import { LOGO_SVG, LOGO_DATA_URI } from './logo.js';
-import { normalizePhone } from './pairing.js';
+import { normalizePhone, COUNTRIES, countryFromLanguage } from './pairing.js';
 
 const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
 const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
@@ -165,7 +165,19 @@ select{padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 .quiet{background:none;border:0;padding:0;color:var(--danger);font:inherit;font-size:15px;font-weight:600;text-decoration:underline;cursor:pointer}
 .qr{display:block;width:100%;max-width:302px;margin:8px auto;border-radius:24px;background:#fff;padding:16px;border:1px solid var(--line)}
 .code{font-family:var(--mono);font-size:44px;font-weight:500;letter-spacing:.12em;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:22px 12px;margin:8px 0}.code i{font-style:normal;color:var(--mute);margin:0 4px}
-a.swap{display:inline-block;margin-top:8px;color:var(--mute);font-size:15px}#box form{display:flex;flex-direction:column;gap:12px;align-items:flex-start}#box form input{width:100%}
+a.swap{display:inline-block;margin-top:8px;color:var(--mute);font-size:15px}
+button.code{display:block;width:100%;color:var(--ink);cursor:pointer;margin:4px 0 0}
+.phone{display:flex;flex-direction:column;gap:12px;width:100%}.phone label{margin:0;color:var(--ink);font-weight:600;font-size:16px}
+.tel{display:flex;align-items:stretch;height:66px;border:1.5px solid var(--line);border-radius:18px;background:var(--card);overflow:hidden}.tel:focus-within{border-color:var(--ink)}
+.cc{position:relative;display:flex;align-items:center;gap:6px;padding:0 12px 0 16px;border-right:1px solid var(--line);flex:none;font-size:19px;font-weight:600}
+.cc em{font-style:normal;font-size:24px;line-height:1}.cc svg{color:var(--mute)}
+.cc select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
+.tel input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font:500 22px/1 var(--mono);letter-spacing:.02em;padding:0 16px}
+.tel input::placeholder{color:#b8b3a8}
+.hint{font-size:15px;color:var(--mute);min-height:22px}.hint b{color:var(--ink);font-family:var(--mono);font-weight:500}
+.howto{list-style:none;counter-reset:h;margin:6px 0 2px;padding:0;display:flex;flex-direction:column;gap:12px;width:100%}
+.howto li{counter-increment:h;position:relative;min-height:30px;padding:4px 0 0 44px;font-size:17px;line-height:1.35;color:var(--ink)}
+.howto li::before{content:counter(h);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;background:var(--chat);display:grid;place-items:center;font-weight:700;font-size:15px}
 .row{border-top:1px solid var(--line);padding:22px 0;display:flex;flex-direction:column;align-items:flex-start;gap:12px}.row form{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:12px}
 .after{display:none}.on .after{display:flex}
 code{font-family:var(--mono);font-size:13px;word-break:break-all}.row>code{display:block;width:100%;background:var(--chat);border-radius:12px;padding:12px 14px}
@@ -401,6 +413,11 @@ ${FOOT}`, { wide: true, nav: NAV })));
     // A phone cannot scan its own screen: there the default is a code, on a desktop the QR. Either page links to the other.
     const onPhone = /Mobile|Android|iPhone|iPad|iPod/i.test(req.get('user-agent') || '');
     const via = ['qr', 'code'].includes(req.query.via) ? req.query.via : onPhone ? 'code' : 'qr';
+    // The number field's country. A number comes from home, not from where the phone is today: a
+    // language other than English (he, el…) says the most; the phone's time zone comes next, in the page.
+    const firstLang = String(req.get('accept-language') || '').split(',')[0].trim().toLowerCase();
+    const country = firstLang && !firstLang.startsWith('en') ? countryFromLanguage(firstLang) : '';
+    const region = countryFromLanguage(req.get('accept-language'));
     res.type('html').send(page(res, `${PRODUCT_NAME} · Link your WhatsApp`, `
 <canvas id="fx" hidden aria-hidden="true"></canvas>
 <div id="box"><span class="pill"><i></i>Starting…</span></div>
@@ -412,7 +429,19 @@ ${FOOT}`, { wide: true, nav: NAV })));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const box=()=>document.getElementById('box');const product=${JSON.stringify(PRODUCT_NAME)};
 let via='${via}',shown='';
-const steps='In WhatsApp: <b>Settings</b>, then <b>Linked devices</b>, then <b>Link a device</b>';
+const open='<li>Open WhatsApp and go to <b>Settings</b> (on Android, the <b>&#8942;</b> menu)</li><li>Tap <b>Linked devices</b>, then <b>Link a device</b></li>';
+const countries=${JSON.stringify(COUNTRIES)};
+const flag=(iso)=>String.fromCodePoint(...[...iso].map(ch=>127397+ch.charCodeAt(0)));
+const tz=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(e){return ''}})();
+const home=(countries.find(c=>c[0]==='${country}')||countries.find(c=>c[3].includes(tz))||countries.find(c=>c[0]==='${region}')||countries.find(c=>c[0]===(navigator.language||'').split('-')[1])||countries.find(c=>c[0]==='US'))[0];
+// The same rule as the server: + or 00 means as typed; otherwise the country code goes in front of the local form.
+function intl(v,cc){const raw=String(v||'').trim();let d=raw.replace(/\\D/g,'');if(raw.startsWith('+')){}else if(d.startsWith('00'))d=d.slice(2);else if(cc&&!(d.startsWith(cc)&&d.length-cc.length>=8&&!d.startsWith('0')))d=cc+(cc==='39'?d:d.replace(/^0/,''));return /^[1-9]\\d{7,14}$/.test(d)?d:null}
+function phoneForm(){const opts=countries.map(c=>'<option value="'+c[0]+'"'+(c[0]===home?' selected':'')+'>'+flag(c[0])+' '+esc(c[2])+' (+'+c[1]+')</option>').join('');const h=countries.find(c=>c[0]===home);return '<h1>Link with a code.</h1><form class="phone" method="post" action="/link/${t.id}/code"><label for="phone">Your WhatsApp number</label><div class="tel"><div class="cc"><em id="ccflag">'+flag(h[0])+'</em><span id="ccdial">+'+h[1]+'</span><svg width="12" height="8" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"/></svg><select id="ccsel" aria-label="Country">'+opts+'</select></div><input type="hidden" name="cc" id="cc" value="'+h[1]+'"><input type="tel" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="'+(h[0]==='IL'?'050 123 4567':'Phone number')+'" required></div><p class="hint" id="as"></p><button class="cta" type="submit">Get my code</button></form>';}
+function syncPhone(){const sel=document.getElementById('ccsel');if(!sel)return;const c=countries.find(x=>x[0]===sel.value);document.getElementById('ccflag').textContent=flag(c[0]);document.getElementById('ccdial').textContent='+'+c[1];document.getElementById('cc').value=c[1];const ph=document.getElementById('phone');ph.placeholder=c[0]==='IL'?'050 123 4567':'Phone number';const d=intl(ph.value,c[1]);const shown=d?'+'+c[1]+' '+d.slice(c[1].length).replace(/(\\d{2,3})(\\d{3})(\\d{4})$/,'$1 $2 $3'):'';document.getElementById('as').innerHTML=d?'The code will be for <b>'+esc(d.startsWith(c[1])?shown:'+'+d)+'</b>':'';}
+document.addEventListener('input',e=>{if(e.target.id==='phone')syncPhone();});
+document.addEventListener('change',e=>{if(e.target.id==='ccsel')syncPhone();});
+async function copyCode(code,btn){try{await navigator.clipboard.writeText(code);}catch(e){const ta=document.createElement('textarea');ta.value=code;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(_){}ta.remove();}if(btn){btn.textContent='Copied';setTimeout(()=>{btn.textContent='Copy code';},2000);}}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if(!b)return;e.preventDefault();copyCode(b.dataset.copy,document.getElementById('copybtn'));});
 const swap=(to)=>'<a href="#" class="swap" data-to="'+to+'">'+(to==='qr'?'Scan a QR code instead':'Link with a code instead')+'</a>';
 document.addEventListener('click',e=>{const a=e.target.closest('a.swap');if(!a)return;e.preventDefault();if(a.dataset.to==='qr'&&document.body.dataset.code==='1'){document.getElementById('toqr').submit();return;}via=a.dataset.to;shown='';tick();});
 document.getElementById('unlink').addEventListener('submit',e=>{if(!confirm('Unlink WhatsApp and erase this account?'))e.preventDefault();});
@@ -429,10 +458,10 @@ function render(s){
  // The same picture is not redrawn: a number being typed must survive the next poll.
  const key=[s.mode,s.pairByCode,s.pairingCode,via==='qr'&&!s.pairByCode&&s.qr?s.qr.slice(-40):'',via,s.rescan,s.controlGroup,s.needsManualGroup].join('|');if(key===shown)return;shown=key;
  if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1><p class="go">Now record your first voice note. To anyone, even to yourself. The text shows up right under it.</p>'+(s.waMe?'<a class="cta" href="'+esc(s.waMe)+'">Open WhatsApp</a>':'')+(s.needsManualGroup?'<p>One thing first: create a WhatsApp group with just you in it and post <code>#transcribe</code> there. That becomes your '+esc(product)+' group.</p>':'<p class="muted">Your <b>'+esc(s.controlGroup||product)+'</b> group in WhatsApp is where you tune things. Write <b>help</b> there.</p>');}
- else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>Enter this code.</h1><p>'+steps+', then <b>Link with phone number instead</b>.</p><div class="code">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</div><p class="muted">It&#39;s good for a few minutes; when it expires a fresh one appears here on its own.</p>'+swap('qr');}
+ else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>Your code.</h1><button class="code" type="button" data-copy="'+esc(c)+'" aria-label="Copy the code">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</button><button class="cta" type="button" id="copybtn" data-copy="'+esc(c)+'">Copy code</button><ol class="howto">'+open+'<li>Tap <b>Link with phone number instead</b></li><li>Paste the code</li></ol><p class="muted">WhatsApp may also send a notification asking for the code; tapping it is a shortcut. The code is good for a few minutes, and a fresh one appears here when it expires.</p>'+swap('qr');}
  else if(s.mode==='qr'&&s.pairByCode){box().innerHTML='<span class="pill"><i></i>Getting you a code…</span>'+swap('qr');}
- else if(s.mode==='qr'&&via==='code'){box().innerHTML='<h1>Link with a code.</h1><form method="post" action="/link/${t.id}/code"><label for="phone">Your WhatsApp number, with the country code</label><input type="tel" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="972 50 123 4567" required><button class="btn" type="submit">Get a code</button></form>'+swap('qr');}
- else if(s.qr){box().innerHTML='<h1>Scan this.</h1><p>'+steps+'.</p><img class="qr" src="'+esc(s.qr)+'" alt="QR code">'+(s.rescan?'<p class="go center">Your phone said it couldn\\'t link? Scan this one again. WhatsApp changed the code after the first scan.</p>':'<p class="muted center">The code refreshes on its own.</p>')+swap('code');}
+ else if(s.mode==='qr'&&via==='code'){box().innerHTML=phoneForm()+swap('qr');}
+ else if(s.qr){box().innerHTML='<h1>Scan this.</h1><ol class="howto">'+open+'<li>Point your phone at this code</li></ol><img class="qr" src="'+esc(s.qr)+'" alt="QR code">'+(s.rescan?'<p class="go center">Your phone said it couldn\\'t link? Scan this one again. WhatsApp changed the code after the first scan.</p>':'<p class="muted center">The code refreshes on its own.</p>')+swap('code');}
  else if(s.mode==='logged_out'){box().innerHTML='<span class="pill"><i></i>Logged out</span><p>WhatsApp logged this device out. A new code is coming…</p>';}
  else{box().innerHTML='<span class="pill"><i></i>'+(s.mode==='reconnecting'?'Reconnecting…':'Preparing your code…')+'</span>';}
 }
@@ -444,8 +473,10 @@ tick();` }));
   // Link with a code: the number stays with the account until it is linked or the QR is chosen again.
   app.post('/link/:id/code', async (req, res) => {
     const t = auth(req, res); if (!t) return;
-    if (!normalizePhone(req.body.phone)) return res.status(400).type('html').send(page(res, 'Not a number', `<h1 class="small">That doesn&#39;t look like a number.</h1><p>Write it with the country code and nothing else: <b>972501234567</b> for an Israeli number, for instance.</p><a class="back" href="/link/${t.id}">Back</a>`));
-    await t.requestPairingCode(req.body.phone);
+    // The number as typed (local, or with + / 00) and the country picked next to it.
+    const phone = normalizePhone(req.body.phone, req.body.cc);
+    if (!phone) return res.status(400).type('html').send(page(res, 'Not a number', `<h1 class="small">That doesn&#39;t look like a number.</h1><p>Type your WhatsApp number the way you&#39;d give it to a friend, and check the country next to it.</p><a class="back" href="/link/${t.id}?via=code">Back</a>`));
+    await t.requestPairingCode(phone);
     res.redirect(303, `/link/${t.id}`);
   });
   app.post('/link/:id/qr', (req, res) => {
