@@ -1,7 +1,7 @@
 // node --test test/security.test.mjs — pure checks for the hardening (no network).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, mkdtempSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mediaDownloadPolicy, MAX_MEDIA_BYTES } from '../src/media.js';
@@ -137,6 +137,16 @@ test('usage history: when the day rolls over, yesterday\'s minutes are kept (min
   assert.deepEqual(t.usageHistory.at(-1), { day: '2026-01-01', minutes: 10 });
   assert.deepEqual(t.status({ history: true }).usageHistory.at(-1), { day: '2026-01-01', minutes: 10 });
   assert.equal(t.status({ full: true }).usageHistory, undefined, 'the link page API does not get it');
+});
+
+test('transcription totals (own and others\', counts only) survive a restart and reach only the admin status', () => {
+  const dir = join(process.env.DATA_DIR, 'tot1'), rec = { id: 'tot1', createdAt: Date.now(), manageKey: 'k'.repeat(32) };
+  const t = new Tenant(rec, dir);
+  assert.equal(t.totals.own + t.totals.others, 0);
+  t.totals.own = 3; t.totals.others = 5; writeFileSync(join(dir, 'totals.json'), JSON.stringify(t.totals));
+  const again = new Tenant(rec, dir);
+  assert.deepEqual(again.status({ history: true }).totals, t.totals);
+  assert.equal(again.status().totals, undefined, 'the owner-facing status contract is unchanged');
 });
 
 // ---- the length a message declares is the sender's word ----

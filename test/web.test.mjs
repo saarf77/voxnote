@@ -91,6 +91,7 @@ test('admin: one card per account shows who it is (WhatsApp name, number); names
   assert.match(html, /href="https:\/\/wa\.me\/15550100009"/);
   assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;Dana') && !html.includes('<img src=x onerror'));
   assert.ok(!html.includes('<table'), 'no wide table to scroll sideways');
+  assert.match(html, /<b>0<\/b> recordings<br><span class="muted">0 theirs · 0 from others/);
   assert.ok(!/ style="/.test(html), 'no inline style attributes: the CSP would drop them');
   const j = await (await fetch(`${base}/admin.json`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).json();
   assert.equal(j.tenants.find((x) => x.id === t.id).phone, '15550100009');

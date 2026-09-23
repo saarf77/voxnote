@@ -155,6 +155,8 @@ export class Tenant {
     this.glossary = createGlossary(this.f('glossary.json'));
     this.usage = loadJson(this.f('usage.json'), { day: '', seconds: 0, notified: false });
     this.usageHistory = loadJson(this.f('usage-history.json'), []); // [{ day, minutes }], the last 30 days that had any audio
+    // Recordings turned into text, ever (counts only): the owner's own, and everyone else's. Counted from `since`.
+    this.totals = loadJson(this.f('totals.json'), null) || { own: 0, others: 0, since: Date.now() };
     this.recent = new Map(); // media sha -> { content, summary, at } — memory only, never on disk
 
     this.link = null; this.sock = null; this.ownId = null; this.ownLid = null;
@@ -673,6 +675,7 @@ Each one is a single word.
       const body = summary ? `*${summary}*\n${content}` : content;
       this.trace('transcribed', { id: n.id, seconds: n.seconds, inControl: !!inControl, fromMe: n.fromMe, forwarded: n.forwarded, isGroup: n.isGroup, model: run.model, raw: run.text, alts, rewritten: rewritten || null, summary: summary || null });
       this.stats.transcribed++;
+      this.totals[n.fromMe && !n.forwarded ? 'own' : 'others']++; saveJson(this.f('totals.json'), this.totals);
       this.cacheText(n.mediaSha, content, summary);
       console.log(`${this.tag} ${isVideo ? '🎬' : '🎙️'} ${n.seconds}s → ${content.length} chars${summary ? ' + summary' : ''} [${plan}]`);
       let posted = false;
@@ -1003,7 +1006,7 @@ Each one is a single word.
       inviteCode: this.inviteCode, invited: this.invited, dailyMinutes: this.dailyCapMinutes(), bonusMinutes: this.bonusMinutes,
     };
     // The admin page also sees who the account is: its number, WhatsApp name and who invited it.
-    if (history) Object.assign(base, { usageHistory: this.usageHistory, phone: this.phone || null, waName: this.waName || null, referredBy: this.referredBy || null });
+    if (history) Object.assign(base, { usageHistory: this.usageHistory, totals: this.totals, phone: this.phone || null, waName: this.waName || null, referredBy: this.referredBy || null });
     return full ? { ...base, qr: this.qr, pairingCode: this.pairingCode, pairByCode: !!this.pairPhone, rescan: this.pairRefreshedAt > 0 && Date.now() - this.pairRefreshedAt < 180e3, waMe: this.ownId ? `https://wa.me/${this.ownId.split('@')[0]}` : null, product: PRODUCT_NAME } : base;
   }
 }

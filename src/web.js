@@ -287,6 +287,7 @@ function adminCard(t, byCode) {
 <p class="when">Signed up ${when(t.createdAt)} · linked ${when(t.linkedAt)} · last voice note ${when(t.lastMessageAt)}</p>
 <div class="facts2">
 <div><small>Audio today</small><p><b>${t.minutesToday}</b>${t.dailyMinutes ? ` / ${t.dailyMinutes}` : ''} min${t.bonusMinutes ? ` <span class="muted">(+${t.bonusMinutes} bonus)</span>` : ''}</p></div>
+<div><small>Transcribed</small><p><b>${(t.totals?.own || 0) + (t.totals?.others || 0)}</b> recordings<br><span class="muted">${t.totals?.own || 0} theirs · ${t.totals?.others || 0} from others${t.totals?.since ? ` · since ${new Date(t.totals.since).toISOString().slice(0, 10)}` : ''}</span></p></div>
 <div><small>Usage</small>${usageBars(t.usageHistory, t.minutesToday)}</div>
 <div><small>Since restart</small><p>${t.stats.transcribed} done · ${t.stats.dropped} skipped · <span${t.stats.failed ? ' class="danger"' : ''}>${t.stats.failed} failed</span></p></div>
 <div><small>Chats</small><p>${t.enabledGroups} groups on · ${t.mutedChats} chats off</p></div>
@@ -314,6 +315,7 @@ function adminPage(o, nonce) {
   return `${nonceStyle(nonce, ADMIN_CSS)}<div class="wrap adm"><h1 class="small">Accounts</h1>
 <div class="tiles">
 ${tile('Connected', o.connected, `of ${o.accounts} · cap ${o.max}`)}
+${tile('Transcribed', ts.reduce((n, t) => n + (t.totals?.own || 0) + (t.totals?.others || 0), 0), 'recordings, all accounts')}
 ${tile('Waiting to link', o.pending)}
 ${tile('Need attention', errors)}
 ${tile('Audio today', o.budget.serverMinutesToday, `${o.budget.serverDailyMinutes ? `/ ${o.budget.serverDailyMinutes} ` : ''}min${o.budget.perAccountDailyMinutes ? ` · ${o.budget.perAccountDailyMinutes}/account` : ''}`)}
