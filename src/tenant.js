@@ -128,6 +128,7 @@ export class Tenant {
       // Opt-in, off for everyone unless the owner asked for it: keep a copy of
       // each recording with what the models made of it, to improve the product.
       keepAudio: rec.keepAudio === true,
+      firstNoteAt: Number(rec.firstNoteAt) || 0, // the owner's first voice note in the group: the end of onboarding
       paused: rec.paused === true, // the owner wrote "pause": nothing is transcribed until "resume"
       // Who this account is, for the admin page: the linked number and the owner's WhatsApp name.
       phone: /^\d{6,15}$/.test(rec.phone || '') ? rec.phone : '', waName: String(rec.waName || '').slice(0, 80),
@@ -281,7 +282,7 @@ export class Tenant {
 
 הקלטות נמחקות ברגע שהן הופכות לטקסט.
 
-👉 קדימה: לשלוח עכשיו הודעה קולית למישהו, בצ'אט פרטי.`;
+👉 לנסות עכשיו: להקליט הודעה קולית כאן, בקבוצה הזו.`;
     return `Welcome to *${PRODUCT_NAME}* ✅
 It's linked to your WhatsApp. This group is your control panel, and only you are in it.
 
@@ -293,7 +294,7 @@ It's linked to your WhatsApp. This group is your control panel, and only you are
 
 Recordings are deleted the moment they become text.
 
-👉 Go on: send someone a voice note now, in a private chat.`;
+👉 Try it now: record a voice note right here, in this group.`;
   }
 
   helpText() {
@@ -350,7 +351,7 @@ Each one is a single word.
   }
 
   // ---------- state persistence ----------
-  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, paused: this.paused, phone: this.phone, waName: this.waName }); }
+  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, paused: this.paused, firstNoteAt: this.firstNoteAt, phone: this.phone, waName: this.waName }); }
 
   /** Today's ceiling for this account: the server default plus whatever invites earned. */
   dailyCapMinutes() { return DAILY_MINUTES_CAP > 0 ? DAILY_MINUTES_CAP + this.bonusMinutes : 0; }
@@ -781,6 +782,20 @@ Each one is a single word.
       const d = await this.dictationFor(content);
       this.trace('dictation.extracted', { id: n.id, result: d });
       if (d && !this.stopped) { await this.dictate(d, original); return; }
+    }
+    // Recorded right here, not forwarded: it is the owner's own note, and gets its text like one.
+    // The first one is the last step of onboarding: say that this is it, and what to do next.
+    if (!traceable && !n.forwarded && n.isVoice) {
+      const posted = await this.deliver(n, 'me', content, isVideo, original);
+      if (posted && !this.firstNoteAt && !this.stopped) {
+        this.firstNoteAt = Date.now(); this.persistRecord();
+        if (Date.now() - (this.linkedAt || 0) < 7 * 86400e3) {
+          await this.sendPaced(n.chatId, { text: this.ownerLocale() === 'he'
+            ? "👏 ככה זה עובד: כל הודעה קולית שנשלחת ממך מקבלת טקסט ממש מתחתיה, בכל צ'אט.\nעכשיו לשלוח אחת למישהו, בצ'אט פרטי."
+            : "👏 That's how it works: every voice note you send gets its text right under it, in any chat.\nNow send one to someone, in a private chat." }).catch(() => {});
+        }
+      }
+      return;
     }
     this.deliverProbe(n, body, isVideo, original);
   }

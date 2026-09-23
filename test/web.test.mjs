@@ -192,7 +192,7 @@ test('linked: one call to action into WhatsApp, the tools folded away, nothing l
   const api = await (await fetch(`${base}/api/link/${t.id}`, { headers: { cookie } })).json();
   assert.equal(api.waMe, 'https://wa.me/15550100000');
   const html = await (await fetch(`${base}/link/${t.id}`, { headers: { cookie } })).text();
-  assert.match(html, /id="fx"/); assert.match(html, /Open WhatsApp/); assert.match(html, /record your first voice note/);
+  assert.match(html, /id="fx"/); assert.match(html, /Open WhatsApp/); assert.match(html, /Record a voice note there/); assert.match(html, /const openWa="https:\/\/web\.whatsapp\.com\/"/, 'a computer opens WhatsApp Web');
   assert.ok(!/Keep this page|Then send someone|Leave it on auto|id="lang"/.test(html), 'no language selector: that is set from WhatsApp');
   t.ownId = null;
   assert.equal((await (await fetch(`${base}/api/link/${t.id}`, { headers: { cookie } })).json()).waMe, null);

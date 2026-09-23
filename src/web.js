@@ -571,6 +571,8 @@ ${FOOT}`, { wide: true, nav: NAV })));
 <a class="back" href="/privacy">Privacy &amp; terms</a>`, { poll: `
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const box=()=>document.getElementById('box');const product=${JSON.stringify(PRODUCT_NAME)};
+// Into the app itself, where the group is; on a computer, WhatsApp Web.
+const openWa=${JSON.stringify(onPhone ? 'whatsapp://' : 'https://web.whatsapp.com/')};
 let via='${via}',shown='';
 const open='<li>Open WhatsApp and go to <b>Settings</b> (on Android, the <b>&#8942;</b> menu)</li><li>Tap <b>Linked devices</b>, then <b>Link a device</b></li>';
 const countries=${JSON.stringify(COUNTRIES)};
@@ -600,7 +602,7 @@ function render(s){
  wasLinked=s.mode==='connected';
  // The same picture is not redrawn: a number being typed must survive the next poll.
  const key=[s.mode,s.pairByCode,s.pairingCode,via==='qr'&&!s.pairByCode&&s.qr?s.qr.slice(-40):'',via,s.rescan,s.controlGroup,s.needsManualGroup].join('|');if(key===shown)return;shown=key;
- if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1><p class="go">Now record your first voice note. To anyone, even to yourself. The text shows up right under it.</p>'+(s.waMe?'<a class="cta" href="'+esc(s.waMe)+'">Open WhatsApp</a>':'')+(s.needsManualGroup?'<p>One thing first: create a WhatsApp group with just you in it and post <code>#transcribe</code> there. That becomes your '+esc(product)+' group.</p>':'<p class="muted">Your <b>'+esc(s.controlGroup||product)+'</b> group in WhatsApp is where you tune things. Write <b>help</b> there.</p>');}
+ if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1>'+(s.needsManualGroup?'<p class="go">One thing first: in WhatsApp, create a group with just you in it and post <code>#transcribe</code> there. That becomes your '+esc(product)+' group.</p>':'<p class="go">Your <b>'+esc(s.controlGroup||product)+'</b> group is waiting at the top of your chats. Record a voice note there and watch its text show up right under it.</p>')+'<a class="cta" href="'+openWa+'">Open WhatsApp</a><p class="muted">Everything else happens in that group too: write <b>help</b> there.</p>';}
  else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>Your code.</h1><button class="code" type="button" data-copy="'+esc(c)+'" aria-label="Copy the code">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</button><button class="cta" type="button" id="copybtn" data-copy="'+esc(c)+'">Copy code</button><ol class="howto">'+open+'<li>Tap <b>Link with phone number instead</b></li><li>Paste the code</li></ol><p class="muted">WhatsApp may also send a notification asking for the code; tapping it is a shortcut. The code is good for a few minutes, and a fresh one appears here when it expires.</p>'+swap('qr');}
  else if(s.mode==='qr'&&s.pairByCode){box().innerHTML='<span class="pill"><i></i>Getting you a code…</span>'+swap('qr');}
  else if(s.mode==='qr'&&via==='code'){box().innerHTML=phoneForm()+swap('qr');}

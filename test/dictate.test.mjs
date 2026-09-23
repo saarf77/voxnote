@@ -182,7 +182,9 @@ test('forwarded or traceable recordings, and notes the model rejects, stay probe
   await t.handleControlNote(voice(t), 'סתם הקלטה בלי שום בקשה', 'body', false, { key: { id: 'V4' } });
   assert.equal(asked, 1, 'no send cue → no model call');
   assert.equal(t.out.length, 4);
-  for (const o of t.out) { assert.equal(o.jid, CONTROL); assert.match(o.text, /forwarded recording|from \*Someone\*/); }
+  for (const o of t.out) assert.equal(o.jid, CONTROL);
+  for (const o of t.out.slice(0, 2)) assert.match(o.text, /forwarded recording|from \*Someone\*/, 'forwarded or traceable: a probe of its chat');
+  for (const o of t.out.slice(2)) { assert.ok(!/forwarded recording|Couldn't tell/.test(o.text), 'recorded right here: the owner\'s own note'); assert.equal(o.quoted, true); }
 });
 
 test('trace: every step is logged for an account that opted in to keeping data — and nothing for anyone else', async () => {
@@ -220,7 +222,7 @@ test('a spoken answer counts: "Yes." sends, "לא" drops, "שתיים" picks —
   assert.deepEqual(t.out[1], { jid: '1@s.whatsapp.net', text: 'אני כבר בא לאסוף אותך', quoted: false });
   assert.match(t.out[2].text, /Sent to/);
   await t.handleControlNote({ ...voice(t, { sha: 'yes2' }), id: 'V3' }, 'Yes.', 'Yes.', false, { key: { id: 'V3' } });
-  assert.match(t.out[3].text, /forwarded recording/, 'nothing pending: just a recording'); assert.equal(t.out.length, 4);
+  assert.ok(!/forwarded recording/.test(t.out[3].text), 'nothing pending: just the owner\'s note, with its text'); assert.equal(t.out.length, 4);
   await t.handleControlNote(voice(t), note, note, false, { key: { id: 'V4' } });
   await t.handleControlNote({ ...voice(t, { sha: 'no1' }), id: 'V5' }, 'לא.', 'לא.', false, { key: { id: 'V5' } });
   assert.match(t.out.at(-1).text, /Nothing was sent/);
@@ -267,7 +269,7 @@ test('leave speaks Hebrew to a Hebrew owner, and takes a dictation question off 
 
 test('the welcome is short, in the owner\'s language, without the pilot features, and ends on the first voice note', () => {
   const t = tenant();
-  for (const [setup, re] of [[() => { t.locale = 'en'; }, /private chat\.$/], [() => { t.locale = 'he'; }, /בצ'אט פרטי\.$/], [() => { t.locale = ''; t.ownId = '972501234567@s.whatsapp.net'; }, /בצ'אט פרטי\.$/]]) {
+  for (const [setup, re] of [[() => { t.locale = 'en'; }, /in this group\.$/], [() => { t.locale = 'he'; }, /בקבוצה הזו\.$/], [() => { t.locale = ''; t.ownId = '972501234567@s.whatsapp.net'; }, /בקבוצה הזו\.$/]]) {
     setup(); const w = t.welcomeText();
     assert.match(w, re); assert.ok(w.length < 650, `${w.length} chars`);
     assert.ok(!/names:|Eden|undo|שמות/.test(w));
@@ -307,5 +309,20 @@ test('language, from the control group: shown, set by name or code, back to auto
   assert.equal(await text(t, 'the language here is odd'), false, 'only the command itself');
   t.locale = 'he'; await text(t, 'language');
   assert.match(t.out.at(-1).text, /שפת התמלול: \*זיהוי אוטומטי\*/);
+});
+
+test('onboarding ends in the group: the first note recorded there gets its text, then one line on what to do next — once', async () => {
+  const t = tenant(); t.linkedAt = Date.now(); t.dictationFor = async () => null;
+  const rec = (id) => t.handleControlNote({ ...voice(t), id, mediaSha: `sha-${id}` }, 'בדיקה אחת שתיים', 'בדיקה אחת שתיים', false, { key: { id } });
+  await rec('F1');
+  assert.equal(t.out.length, 2);
+  assert.match(t.out[0].text, /בדיקה אחת שתיים/); assert.ok(!/forwarded|Couldn't tell/.test(t.out[0].text));
+  assert.match(t.out[1].text, /That's how it works/); assert.match(t.out[1].text, /private chat/);
+  assert.ok(t.firstNoteAt > 0);
+  await rec('F2');
+  assert.equal(t.out.length, 3, 'the second note just gets its text');
+  const old = tenant(); old.linkedAt = Date.now() - 30 * 86400e3; old.dictationFor = async () => null;
+  await old.handleControlNote({ ...voice(old), id: 'O1' }, 'x y z', 'x y z', false, { key: { id: 'O1' } });
+  assert.equal(old.out.length, 1, 'an account linked long ago is not onboarded again');
 });
 
