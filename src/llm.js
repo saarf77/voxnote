@@ -4,6 +4,8 @@
  * with the same provider-aware key fallback, and always fails closed: any
  * error, timeout, or budget-truncated reply returns null.
  */
+import { chargeChat } from './cost.js';
+
 const BASE_URL = process.env.SUMMARY_BASE_URL || 'https://api.openai.com/v1';
 const MODEL = process.env.SUMMARY_MODEL || 'gpt-4o-mini';
 
@@ -66,7 +68,9 @@ async function callProvider(baseUrl, apiKey, system, user, { maxTokens = 600, te
       let code = ''; try { code = JSON.parse(body)?.error?.code || JSON.parse(body)?.error?.type || ''; } catch { /* not json */ }
       console.warn(`   ⚠️  llm ${model} → HTTP ${res.status}${code ? ` (${code})` : ''}`); return null;
     }
-    const choice = (await res.json()).choices?.[0];
+    const json = await res.json();
+    chargeChat(model, json.usage); // billed even when the reply is then refused below
+    const choice = json.choices?.[0];
     if (!choice || choice.finish_reason === 'length') { console.warn(`   ⚠️  llm ${model} → ${!choice ? 'no choice' : 'truncated (finish_reason=length)'}`); return null; } // never trust a cut-off reply
     return choice.message?.content?.trim() || null;
   } catch (e) {

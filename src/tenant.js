@@ -32,6 +32,7 @@ import * as claims from './claims.js';
 import { normalizePhone } from './pairing.js';
 import { LOGO_MARK_SVG } from './logo.js';
 import { extractDictation, matchContacts, looksLikeDictation } from './dictate.js';
+import { meter, bill } from './cost.js';
 
 // Bounded work: at most this many recordings in flight per account, and across
 // the whole process, so one flooded account can't starve the others or the box.
@@ -155,7 +156,7 @@ export class Tenant {
     this.glossary = createGlossary(this.f('glossary.json'));
     this.usage = loadJson(this.f('usage.json'), { day: '', seconds: 0, notified: false });
     this.usageHistory = loadJson(this.f('usage-history.json'), []); // [{ day, minutes }], the last 30 days that had any audio
-    // Recordings turned into text, ever (counts only): the owner's own, and everyone else's. Counted from `since`.
+    // Recordings turned into text, ever (counts, seconds and dollars only): the owner's own and everyone else's. Counted from `since`.
     this.totals = loadJson(this.f('totals.json'), null) || { own: 0, others: 0, since: Date.now() };
     this.recent = new Map(); // media sha -> { content, summary, at } — memory only, never on disk
 
@@ -604,7 +605,7 @@ Each one is a single word.
       if (!media) return;
       if (this.stopped) { deleteMediaFile(media); return; } // checkpoint: nothing leaves the box after stop()
       if (!await this.holdToRealLength(n, media, sec, isVideo)) { deleteMediaFile(media); return; }
-      return this.transcribeAndDeliver(m, n, chatName, media, isVideo, inControl);
+      return this.metered(n, () => this.transcribeAndDeliver(m, n, chatName, media, isVideo, inControl));
     }));
     this.inFlight.add(job);
     try { return await job; } finally { this.inFlight.delete(job); }
@@ -638,6 +639,16 @@ Each one is a single word.
     if (!this.reserveUsage(extra)) { budget.refund(extra); giveBack(); console.log(`${this.tag} ⏸️ over daily cap, skipped`); return false; }
     n.seconds = real; // the sanity check and the logs work with the true length
     return true;
+  }
+
+  /** Everything one recording sets off is billed to it, and the bill added to this account's total (dollars, no content). */
+  metered(n, fn) {
+    return meter(n.seconds, async () => {
+      try { return await fn(); } finally {
+        const b = bill();
+        if (b?.usd > 0) { this.totals.usd = (this.totals.usd || 0) + b.usd; if (b.unpriced) this.totals.unpriced = true; saveJson(this.f('totals.json'), this.totals); }
+      }
+    });
   }
 
   async transcribeAndDeliver(m, n, chatName, media, isVideo, inControl) {
@@ -675,7 +686,9 @@ Each one is a single word.
       const body = summary ? `*${summary}*\n${content}` : content;
       this.trace('transcribed', { id: n.id, seconds: n.seconds, inControl: !!inControl, fromMe: n.fromMe, forwarded: n.forwarded, isGroup: n.isGroup, model: run.model, raw: run.text, alts, rewritten: rewritten || null, summary: summary || null });
       this.stats.transcribed++;
-      this.totals[n.fromMe && !n.forwarded ? 'own' : 'others']++; saveJson(this.f('totals.json'), this.totals);
+      const whose = n.fromMe && !n.forwarded ? 'own' : 'others';
+      this.totals[whose]++; this.totals[`${whose}Seconds`] = (this.totals[`${whose}Seconds`] || 0) + n.seconds;
+      saveJson(this.f('totals.json'), this.totals);
       this.cacheText(n.mediaSha, content, summary);
       console.log(`${this.tag} ${isVideo ? '🎬' : '🎙️'} ${n.seconds}s → ${content.length} chars${summary ? ' + summary' : ''} [${plan}]`);
       let posted = false;

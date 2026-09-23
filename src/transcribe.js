@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
+import { chargeSpeech } from './cost.js';
 
 /**
  * Speech-to-text via any OpenAI-compatible /audio/transcriptions endpoint.
@@ -138,6 +139,7 @@ async function postTranscription(absPath, cfg, { language, model, signal } = {})
       let code = ''; try { const j = JSON.parse(body); code = j?.error?.code || j?.error?.type || ''; } catch { /* not json */ }
       throw new Error(`${model || cfg.model} HTTP ${res.status}${code ? ` (${String(code).slice(0, 40)})` : ''}`);
     }
+    chargeSpeech(model || cfg.model);
     return (await res.text()).trim();
   } finally {
     done();

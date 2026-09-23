@@ -23,6 +23,7 @@ import * as research from './research.js';
 import { dataDirIsMount } from './paths.js';
 import { LOGO_SVG, LOGO_DATA_URI } from './logo.js';
 import { normalizePhone, COUNTRIES, countryFromLanguage } from './pairing.js';
+import { speechPerMinute } from './cost.js';
 
 const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
 const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
@@ -275,8 +276,20 @@ for(const form of document.querySelectorAll('form[data-op]'))form.addEventListen
   const out=form.closest('.acct').querySelector('.adout'),u=new URL(form.getAttribute('action'),location.origin);for(const [k,v] of new FormData(form))u.searchParams.set(k,v);
   out.textContent='…';try{const r=await fetch(u,{method:'POST'});const j=await r.json().catch(()=>({}));out.textContent=(r.ok?'✓ ':'✗ ')+JSON.stringify(j);if(r.ok&&form.dataset.reload)setTimeout(()=>location.reload(),900);}catch(err){out.textContent='✗ '+err.message;}});
 `;
-function adminCard(t, byCode) {
+// Minutes and dollars per account. Metered exactly since `totals.since`; before that only the
+// daily minutes exist, priced at the server's measured rate (or the speech price alone).
+const usd = (v) => `$${v.toFixed(v < 1 ? 3 : 2)}`;
+function spend(t, rate) {
+  const tot = t.totals || {};
+  const ownMin = (tot.ownSeconds || 0) / 60, othersMin = (tot.othersSeconds || 0) / 60;
+  const sinceDay = tot.since ? new Date(tot.since).toISOString().slice(0, 10) : '9999';
+  const earlierMin = (t.usageHistory || []).filter((h) => h.day < sinceDay).reduce((a, h) => a + h.minutes, 0);
+  const earlierUsd = earlierMin * (rate || speechPerMinute(t.model));
+  return { ownMin, othersMin, meteredMin: ownMin + othersMin, usd: tot.usd || 0, unpriced: !!tot.unpriced, earlierMin, earlierUsd };
+}
+function adminCard(t, byCode, rate) {
   const [state, stateLabel] = stateOf(t);
+  const $ = spend(t, rate);
   const name = t.waName || t.label || (t.linkedAt ? 'No name' : 'Not linked yet');
   const inviter = t.referredBy ? byCode.get(t.referredBy) : null;
   const find = [t.waName, t.label, t.phone, t.id, t.controlGroup].filter(Boolean).join(' ').toLowerCase().replace(/[\s+()-]/g, '');
@@ -288,6 +301,8 @@ function adminCard(t, byCode) {
 <div class="facts2">
 <div><small>Audio today</small><p><b>${t.minutesToday}</b>${t.dailyMinutes ? ` / ${t.dailyMinutes}` : ''} min${t.bonusMinutes ? ` <span class="muted">(+${t.bonusMinutes} bonus)</span>` : ''}</p></div>
 <div><small>Transcribed</small><p><b>${(t.totals?.own || 0) + (t.totals?.others || 0)}</b> recordings<br><span class="muted">${t.totals?.own || 0} theirs · ${t.totals?.others || 0} from others${t.totals?.since ? ` · since ${new Date(t.totals.since).toISOString().slice(0, 10)}` : ''}</span></p></div>
+<div><small>Minutes transcribed</small><p><b>${Math.round($.meteredMin + $.earlierMin)}</b> min<br><span class="muted">${Math.round($.ownMin)} theirs · ${Math.round($.othersMin)} from others${$.earlierMin ? ` · ${$.earlierMin} before counting` : ''}</span></p></div>
+<div><small>Cost</small><p><b>${usd($.usd + $.earlierUsd)}</b>${$.earlierUsd || $.unpriced ? ' <span class="muted">(estimate)</span>' : ''}<br><span class="muted">${$.meteredMin >= 1 ? `${usd($.usd / $.meteredMin)}/min` : ''}${$.earlierUsd ? `${$.meteredMin >= 1 ? ' · ' : ''}~${usd($.earlierUsd)} before counting` : ''}</span></p></div>
 <div><small>Usage</small>${usageBars(t.usageHistory, t.minutesToday)}</div>
 <div><small>Since restart</small><p>${t.stats.transcribed} done · ${t.stats.dropped} skipped · <span${t.stats.failed ? ' class="danger"' : ''}>${t.stats.failed} failed</span></p></div>
 <div><small>Chats</small><p>${t.enabledGroups} groups on · ${t.mutedChats} chats off</p></div>
@@ -311,11 +326,18 @@ function adminPage(o, nonce) {
   const rank = (t) => (t.ready ? 0 : t.linkedAt ? 1 : 2);
   const ts = [...o.tenants].sort((a, b) => rank(a) - rank(b) || (b.lastMessageAt || b.linkedAt || b.createdAt) - (a.lastMessageAt || a.linkedAt || a.createdAt));
   const errors = ts.filter((t) => stateOf(t)[0] === 'warn' || stateOf(t)[0] === 'bad').length;
+  // The server's measured dollars per minute, once there is enough to measure; it prices the minutes from before the meter.
+  const measured = ts.reduce((a, t) => [a[0] + (t.totals?.usd || 0), a[1] + ((t.totals?.ownSeconds || 0) + (t.totals?.othersSeconds || 0)) / 60], [0, 0]);
+  const rate = measured[1] >= 5 ? measured[0] / measured[1] : 0;
+  const all = ts.map((t) => spend(t, rate));
+  const allMin = all.reduce((a, x) => a + x.meteredMin + x.earlierMin, 0), allUsd = all.reduce((a, x) => a + x.usd + x.earlierUsd, 0);
   const tile = (label, big, small = '') => `<div class="tile"><small>${label}</small><b>${big}</b> <span>${small}</span></div>`;
   return `${nonceStyle(nonce, ADMIN_CSS)}<div class="wrap adm"><h1 class="small">Accounts</h1>
 <div class="tiles">
 ${tile('Connected', o.connected, `of ${o.accounts} · cap ${o.max}`)}
 ${tile('Transcribed', ts.reduce((n, t) => n + (t.totals?.own || 0) + (t.totals?.others || 0), 0), 'recordings, all accounts')}
+${tile('Minutes', Math.round(allMin), 'transcribed, all accounts')}
+${tile('Cost', usd(allUsd), rate ? `${usd(rate)}/min measured` : 'estimate')}
 ${tile('Waiting to link', o.pending)}
 ${tile('Need attention', errors)}
 ${tile('Audio today', o.budget.serverMinutesToday, `${o.budget.serverDailyMinutes ? `/ ${o.budget.serverDailyMinutes} ` : ''}min${o.budget.perAccountDailyMinutes ? ` · ${o.budget.perAccountDailyMinutes}/account` : ''}`)}
@@ -323,7 +345,7 @@ ${tile('Storage', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</s
 </div>
 <div class="adbar"><input type="text" id="q" placeholder="Search name, number, id, group" autocomplete="off">
 <button class="chip" data-f="all" aria-pressed="true">All</button><button class="chip" data-f="ok" aria-pressed="false">Connected</button><button class="chip" data-f="bad" aria-pressed="false">Need attention</button><button class="chip" data-f="wait" aria-pressed="false">Waiting</button></div>
-${ts.map((t) => adminCard(t, byCode)).join('')}
+${ts.map((t) => adminCard(t, byCode, rate)).join('')}
 <p class="empty" id="none"${ts.length ? ' hidden' : ''}>${ts.length ? 'No account matches.' : 'No accounts yet.'}</p>
 </div>`;
 }
