@@ -18,7 +18,8 @@
  * Env:
  *   REWRITE=0               deliver raw transcripts (default: on)
  *   REWRITE_MIN_WORDS       shorter transcripts are delivered as-is (default 4)
- *   REWRITE_TIMEOUT_MS      default 20000
+ *   REWRITE_TIMEOUT_MS      default 20000 (the faithful rewrite)
+ *   REWRITE_EDITOR_TIMEOUT_MS default 60000: a strong model takes 13–25 s on a long note
  *   REWRITE_MODEL           the faithful rewrite's model (default: SUMMARY_MODEL)
  *   REWRITE_EDITOR_MODEL    the editor's model (default: the same)
  * Uses the SUMMARY_* provider/model (same as the one-line summary).
@@ -36,10 +37,11 @@ export const editorLabel = process.env.REWRITE_EDITOR_MODEL || rewriteLabel;
 export const REWRITE_STYLES = ['editor', 'faithful'];
 const MIN_WORDS = Math.max(1, Number(process.env.REWRITE_MIN_WORDS ?? 4) || 4);
 const TIMEOUT_MS = Number(process.env.REWRITE_TIMEOUT_MS ?? 20000) || 20000;
+const EDITOR_TIMEOUT_MS = Number(process.env.REWRITE_EDITOR_TIMEOUT_MS ?? 60000) || 60000;
 
 const SYSTEM_EDITOR = `You receive an automatic speech-to-text transcript of a WhatsApp voice message — sometimes several transcripts of the SAME audio from different recognisers. People ramble when they record: they think out loud, circle back, repeat themselves, bury the point in the middle. Recognition is imperfect too: words are misheard (similar-sounding words substituted) and sentences run together.
 
-Write the message the reader would want to get instead of listening: the shortest, clearest text that still carries everything the speaker wanted to get across. In the speaker's own voice (first person), as if they had thought it through and then typed it. Write in the language the transcript is written in: an English transcript gets an English message, a Hebrew one a Hebrew message — the examples below are Hebrew only because most recordings are. You are an editor with a free hand over wording, order and length — not over the facts.
+Write the message the reader would want to get instead of listening: the shortest, clearest text that still carries everything the speaker wanted to get across. In the speaker's own voice (first person), as if they had thought it through and then typed it — and in the speaker's grammatical gender as the transcript shows it ("הולכת", "שמחה" → a woman: "אני שולחת", never "אני שולח"). Write in the language the transcript is written in: an English transcript gets an English message, a Hebrew one a Hebrew message — the examples below are Hebrew only because most recordings are. You are an editor with a free hand over wording, order and length — not over the facts.
 
 What must survive:
 1. Everything the reader needs in order to understand, answer or act: every request, question, decision, commitment, opinion and its reason, condition ("only if…", "unless…"), and every name, number, date, time, place, amount, link and term. A negation stays a negation. How the speaker feels about it (annoyed, excited, unsure, joking) is content too when it changes how the message should be read.
@@ -57,7 +59,7 @@ What you are free to do:
 Reading the audio correctly (this part is not a matter of style):
 9. Reconstruct meaning. Replace a misheard word with the word the speaker clearly meant: a word that sounds alike and fits the sentence. Never pass on a fragment that makes no sense when the intended meaning is clear.
 9a. When more than one transcript is given, they are readings of the SAME audio. Wherever they differ, choose the reading that is a real phrase and fits the sentence, and prefer a reading that one of them actually contains over wording you invent yourself (e.g. "אין להם ממש תשקיע" vs "אלא אם ממש תשקיע" → אלא אם ממש תשקיע ותחפש; "לחור"/"לנחור" → לנחור; "ניק"/"העניקה" → הניקה). A word that only one recogniser heard is usually real, not noise — if one reading goes on after the others stop, that ending was said.
-9b. Never change a claim while repairing it: same direction, same subject, same actor. Do not flip a meaning to make a sentence fluent ("אלא אם תשקיע" — unless you make an effort — must not become "אין במה להשקיע" — there is nothing to invest in), and never add a subject, an actor or an object the readings do not contain. If a fragment that matters stays unclear after weighing the readings, keep the speaker's words for it rather than inventing a sentence that sounds right.
+9b. Never change a claim while repairing it: same direction, same subject, same actor. Do not flip a meaning to make a sentence fluent ("אלא אם תשקיע" — unless you make an effort — must not become "אין במה להשקיע" — there is nothing to invest in), and never add a subject, an actor or an object the readings do not contain. If a fragment that matters stays unclear after weighing the readings, keep the speaker's words for it rather than inventing a sentence that sounds right. An unreadable stretch is never a gap to fill: no "we already decided", "I'll update you" or any other sentence the readings do not contain.
 10. Spoken times are clock times: "8.20" → 8:20, "12.5" / "שתים עשרה וחצי" → 12:30, "ארבע ועשרים" → 4:20, "10.45" → 10:45. A number after "ב-" together with a time-of-day word (בלילה, בבוקר, בצהריים) is a clock time even if the recogniser wrote "דקות" after it ("קם ב-12.5 דקות בערך בלילה" → "קם בערך ב-12:30 בלילה"). Real durations stay durations ("לקח 20 דקות").
 11. Foreign words or phrases spelled phonetically (English inside Hebrew): "ביי פאר"/"ביפר"/"בי פאר" = "by far", "ג'ימל" = Gmail, "מרקטינג" stays. Write them the way people type them; never turn such a phrase into a name or an acronym.
 12. If a list of known names/terms is given, spell names as in that list when the transcript has a near-miss of one. Do not force a name where the speaker did not say one, and do not introduce a name the transcript does not mention.
@@ -163,18 +165,29 @@ export function splitHeadline(raw) {
 export async function rewriteMessage(text, { speaker = null, isMe = false, names = '', alt = null, alts = [], style = 'editor' } = {}) {
   if (!rewriteEnabled || words(text).length < MIN_WORDS) return null;
   const readings = [...(Array.isArray(alts) ? alts : [alts]), alt].filter(Boolean);
-  const editor = style !== 'faithful';
+  if (style === 'faithful') return runRewrite(text, { speaker, isMe, names, readings, editor: false });
+  const edited = await runRewrite(text, { speaker, isMe, names, readings, editor: true });
+  if (edited) return edited;
+  // The editor timed out or failed its guards: the faithful rewrite on the small
+  // model is a far better plan B than the raw transcript or another provider.
+  console.warn('   ↪️  editor gave nothing usable — falling back to the faithful rewrite');
+  return runRewrite(text, { speaker, isMe, names, readings, editor: false });
+}
+
+async function runRewrite(text, { speaker, isMe, names, readings, editor }) {
   const headline = editor && summarizeEnabled && words(text).length >= SUMMARY_MIN_WORDS;
   const user = buildRewriteInput(text, { speaker, isMe, names, alts: readings, headline: editor ? headline : null });
+  const label = editor ? 'editor' : 'faithful';
   // Generous budget: on reasoning models the hidden thinking counts against it,
   // and llmText returns null on a truncated reply rather than a cut-off text.
-  const raw = await llmText(editor ? SYSTEM_EDITOR : SYSTEM_FAITHFUL, user, { maxTokens: 3000, temperature: 0.2, timeoutMs: TIMEOUT_MS, model: editor ? editorLabel : rewriteLabel });
-  if (raw == null) { console.warn('   ⚠️  rewrite unavailable (error/timeout/truncated) — delivering the raw transcript'); return null; }
+  // The editor has its own plan B (the faithful rewrite), so no second provider.
+  const raw = await llmText(editor ? SYSTEM_EDITOR : SYSTEM_FAITHFUL, user, { maxTokens: 3000, temperature: 0.2, timeoutMs: editor ? EDITOR_TIMEOUT_MS : TIMEOUT_MS, model: editor ? editorLabel : rewriteLabel, fallback: !editor });
+  if (raw == null) { console.warn(`   ⚠️  rewrite [${label}] unavailable (error/timeout/truncated)`); return null; }
   const parts = splitHeadline(raw);
-  const r = acceptRewrite(text, parts.body, { style: editor ? 'editor' : 'faithful' });
-  if (!r.ok) { console.warn(`   ⚠️  rewrite rejected (${r.reason}) — delivering the raw transcript`); return null; }
+  const r = acceptRewrite(text, parts.body, { style: label });
+  if (!r.ok) { console.warn(`   ⚠️  rewrite [${label}] rejected (${r.reason})`); return null; }
   const h = headline && parts.headline ? acceptHeadline(parts.headline) : null;
   if (headline && !h?.ok) console.warn(`   ⚠️  headline ${h ? `rejected (${h.reason})` : 'missing'}`);
-  console.log(`   ✍️  rewrite ok [${editor ? 'editor' : 'faithful'}] (${r.text.length} chars${h?.ok ? ` + headline ${h.text.length}` : ''})`);
+  console.log(`   ✍️  rewrite ok [${label}] (${r.text.length} chars${h?.ok ? ` + headline ${h.text.length}` : ''})`);
   return { text: r.text, summary: h?.ok ? h.text : null };
 }

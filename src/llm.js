@@ -31,10 +31,14 @@ export const llmFallbackLabel = FB_BASE_URL && FB_API_KEY ? `${FB_MODEL} @ ${hos
 
 export const llmEnabled = Boolean(API_KEY);
 
-/** @returns the reply text, or null on any failure / truncation. */
-export async function llmText(system, user, opts = {}) {
+/**
+ * @param {{ fallback?: boolean }} [opts] fallback: false = no second provider (the
+ *   caller has a better plan B of its own)
+ * @returns the reply text, or null on any failure / truncation.
+ */
+export async function llmText(system, user, { fallback = true, ...opts } = {}) {
   const out = await callProvider(BASE_URL, API_KEY, system, user, opts);
-  if (out !== null || !FB_API_KEY) return out;
+  if (out !== null || !FB_API_KEY || !fallback) return out;
   console.warn(`   ↪️  falling back to ${llmFallbackLabel}`);
   return callProvider(FB_BASE_URL, FB_API_KEY, system, user, { ...opts, model: FB_MODEL });
 }
