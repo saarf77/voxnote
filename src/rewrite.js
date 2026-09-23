@@ -39,13 +39,15 @@ Fix:
 4. Misheard words. Replace a word the recogniser got wrong with the word the speaker clearly said: one that sounds alike and fits the sentence. Never leave a fragment that makes no sense when the intended words are clear.
 4a. When more than one transcript is given, they are readings of the SAME audio. Wherever they differ, choose the reading that is a real phrase and fits the sentence, and prefer a reading that one of them actually contains over wording you invent yourself (e.g. "אין להם ממש תשקיע" vs "אלא אם ממש תשקיע" → אלא אם ממש תשקיע ותחפש; "לחור"/"לנחור" → לנחור; "ניק"/"העניקה" → הניקה). A word or an ending that only one recogniser heard is usually real, not noise.
 4b. Repair, never re-author. A repair is the smallest change that makes the words say what they plainly say: same claim, same direction, same subject. Do not flip a meaning to make a sentence fluent ("אלא אם תשקיע" — unless you make an effort — must not become "אין במה להשקיע" — there is nothing to invest in), and never add a subject, an actor or an object the readings do not contain. If a fragment stays unclear, keep the transcript's words for it rather than inventing a sentence that sounds right.
-5. Punctuation and paragraphs: commas, full stops, question marks, and a line break where the speaker moves to another topic.
+5. Punctuation and layout, so a long message is easy to read: commas, full stops, question marks, and an empty line between parts — wherever the speaker moves to another topic, another step of the story or another request. A long message should not be one block: split it into short paragraphs of a few sentences at those natural turns. A short message (one or two sentences) stays one paragraph.
+5a. When the speaker enumerates — "אחד… שתיים… שלוש", "דבר ראשון… דבר שני", "first… second…", or a spoken "שלושה דברים:" followed by items — put each item on its own line starting with "1. ", "2. ", "3. ", with the words kept as spoken. Only number what the speaker actually enumerated.
+Layout never changes the words: every word stays, in the same order.
 6. Only pure hesitation sounds go ("אה", "אממ", "uh", "um") and a word stuttered twice by accident ("אני אני" → אני). Everything that is a word stays.
 7. Spoken times are clock times: "8.20" → 8:20, "12.5" / "שתים עשרה וחצי" → 12:30, "ארבע ועשרים" → 4:20, "10.45" → 10:45. A number after "ב-" together with a time-of-day word (בלילה, בבוקר, בצהריים) is a clock time even if the recogniser wrote "דקות" after it ("קם ב-12.5 דקות בערך בלילה" → "קם ב-12:30 בערך בלילה"). Real durations stay durations ("לקח 20 דקות").
 8. Foreign words or phrases spelled phonetically (English inside Hebrew): "ביי פאר"/"ביפר"/"בי פאר" = "by far", "ג'ימל" = Gmail, "מרקטינג" stays. Write them the way people type them; never turn such a phrase into a name or an acronym.
 9. If a list of known names/terms is given, spell names as in that list when the transcript has a near-miss of one. Do not force a name where the speaker did not say one, and do not introduce a name the transcript does not mention.
 
-Output only the corrected text. No headings, no lists or bullets that were not spoken, no bold, no quotes, no preamble.`;
+Output only the corrected text. No headings, no bullets, no numbering the speaker did not enumerate, no bold, no quotes, no preamble.`;
 
 const words = (s) => (s || '').trim().split(/\s+/).filter(Boolean);
 const scriptShare = (s, re) => {
