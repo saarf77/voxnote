@@ -416,7 +416,7 @@ export function createWebApp() {
 <section class="hero wrap">
 ${invitedBy ? '<span class="invited">A friend invited you.</span>' : ''}
 <h1>Ramble, baby.<br><span>It&#39;s handled.</span></h1>
-<p class="sub">Every voice note, boiled down to what you need to know. Not a transcript.</p>
+<p class="sub">Every voice note, as text you can read at a glance. Right under the recording.</p>
 <form method="post" action="/start" id="start" class="start">
 ${INVITE_CODE ? '<div><label for="invite">Invite code</label><input type="text" id="invite" name="invite" autocomplete="off" required></div>' : ''}
 <input type="hidden" name="consent" value="1">${invitedBy ? `<input type="hidden" name="ref" value="${esc(invitedBy)}">` : ''}
@@ -468,7 +468,7 @@ ${FOOT}`, { wide: true, nav: NAV }));
 <div class="facts plain">
 <p><b>Your voice notes.</b> Every one you send, in any chat, gets its text right under it.</p>
 <p><b>Private chats.</b> Voice notes and videos people send you get their text too.</p>
-<p><b>Clean text.</b> Not word for word. What they meant, without the ums. Long ones get a one-line summary on top.</p>
+<p><b>Clean text.</b> Every word they said, with the ums gone and the misheard words fixed. Long ones get a line on top saying what it&#39;s about.</p>
 <p><b>Hands off.</b> View-once media is never touched. In disappearing chats, the text disappears with the recording.</p>
 <p><b>Any language.</b> It works out which one on its own.</p>
 ${DAILY_MINUTES_CAP ? `<p><b>A daily limit.</b> ${DAILY_MINUTES_CAP} minutes of audio a day.</p>` : ''}
