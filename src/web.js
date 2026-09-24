@@ -24,6 +24,7 @@ import { dataDirIsMount } from './paths.js';
 import { LOGO_SVG, LOGO_DATA_URI } from './logo.js';
 import { normalizePhone, COUNTRIES, countryFromLanguage } from './pairing.js';
 import { speechPerMinute } from './cost.js';
+import * as visitors from './visitors.js';
 
 const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
 const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
@@ -208,6 +209,28 @@ table{border-collapse:collapse;font-size:14px;white-space:nowrap}th,td{padding:4
 </style></head><body><header class="nav wrap${wide ? '' : ' narrow'}">${mark}${nav}</header><main${wide ? '' : ' class="wrap narrow"'}>${body}</main>${poll ? `<script nonce="${nonce}">document.addEventListener('DOMContentLoaded',()=>{${poll}\n});</script>` : ''}</body></html>`;
 }
 
+// ---------- who signed up (coarse, for the admin page) ----------
+// Device and browser from the agent string: a label, never the string itself.
+function deviceOf(ua = '') {
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '';
+  const app = /FBAN|FBAV/.test(ua) ? 'Facebook app' : /Instagram/.test(ua) ? 'Instagram app' : /LinkedInApp/.test(ua) ? 'LinkedIn app' : /WhatsApp/.test(ua) ? 'WhatsApp' : /Telegram/.test(ua) ? 'Telegram'
+    : /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
+  return [os, app].filter(Boolean).join(' · ') || (ua ? 'Other' : 'Unknown');
+}
+// A country: from the edge's geo header when a proxy in front sends one, else the region in the browser's language.
+function countryOf(req) {
+  const edge = String(req.get('cf-ipcountry') || req.get('x-vercel-ip-country') || req.get('x-country-code') || '').toUpperCase();
+  if (/^[A-Z]{2}$/.test(edge) && edge !== 'XX') return { code: edge, how: 'network' };
+  const region = /^[a-z]{2,3}-([a-z]{2})\b/i.exec(String(req.get('accept-language') || '').split(',')[0].trim())?.[1];
+  return region ? { code: region.toUpperCase(), how: 'browser language' } : null;
+}
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+const countryName = (code) => { try { return regionNames.of(code) || code; } catch { return code; } };
+const flag = (code) => (/^[A-Z]{2}$/.test(code || '') ? String.fromCodePoint(...[...code].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '');
+// Where they came from: the referring site's host (the landing page reports it), or an invite.
+const sourceHost = (v) => { try { const u = new URL(String(v)); return /^https?:$/.test(u.protocol) ? u.hostname.replace(/^www\./, '').slice(0, 80) : ''; } catch { return ''; } };
+const TZ_RE = /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,2}$/;
+
 // ---------- admin page ----------
 // One card per account, newest activity first: who it is (WhatsApp name and number),
 // whether it works, what it used, and the support tools folded underneath. Never content.
@@ -264,6 +287,7 @@ const ADMIN_CSS = `
 .ops .btn{height:40px;padding:0 14px;font-size:14px;white-space:nowrap}
 .adout{margin-top:10px;font-size:13px;font-family:var(--mono);overflow-wrap:anywhere;color:var(--mute)}
 .empty{color:var(--mute);padding:24px 0}
+.bits{margin-top:14px;font-size:14px;overflow-wrap:anywhere}.bits code{font-size:13px}.slim{padding:14px 18px}.slim h3{font-size:18px}.slim .who>.muted{font-size:14px}.slim .bits{margin-top:6px}
 `;
 // Buttons post with fetch (the browser re-sends the Basic credentials) and show the answer inline.
 const ADMIN_JS = `
@@ -287,7 +311,33 @@ function spend(t, rate) {
   const earlierUsd = earlierMin * (rate || speechPerMinute(t.model));
   return { ownMin, othersMin, meteredMin: ownMin + othersMin, usd: tot.usd || 0, unpriced: !!tot.unpriced, earlierMin, earlierUsd };
 }
-function adminCard(t, byCode, rate) {
+// Where a sign-up came from, as short pieces: country, device, address, source, and whether the browser was here before.
+function signupBits(t, byId) {
+  const u = t.signup; if (!u) return [];
+  const c = u.country;
+  const other = u.hadAccount && u.hadAccount !== t.id ? byId.get(u.hadAccount) : null;
+  return [
+    c ? `${flag(c.code)} ${esc(countryName(c.code))}${c.how === 'network' ? '' : ' <span class="muted">(browser language)</span>'}` : '',
+    u.tz ? `<span class="muted">${esc(u.tz.replace(/_/g, ' '))}</span>` : '',
+    esc(u.device || ''),
+    u.ip ? `<code>${esc(u.ip)}</code>` : '',
+    u.from ? `from ${esc(u.from)}` : u.invited ? 'from an invite' : 'direct',
+    u.visitor ? (u.visits > 1 ? `returning browser: ${u.visits - 1} earlier visit${u.visits === 2 ? '' : 's'}, first ${ago(u.firstSeen)}` : 'first visit') : 'no visitor cookie',
+    u.earlierAccounts ? `<span class="danger">${u.earlierAccounts} earlier sign-up${u.earlierAccounts === 1 ? '' : 's'} from this browser</span>` : '',
+    other ? `browser already had <a href="#a-${esc(other.id)}">${esc(other.waName || other.id.slice(0, 8))}</a>` : u.hadAccount && u.hadAccount !== t.id ? 'browser already had an account' : '',
+  ].filter(Boolean);
+}
+// An account that never linked: one line, and when it will be removed.
+function pendingCard(t, byId) {
+  const left = Math.max(0, Math.round((t.expiresAt - Date.now()) / 60e3));
+  const find = [t.id, t.signup?.ip, t.signup?.device, t.signup?.from, t.signup?.country && countryName(t.signup.country.code)].filter(Boolean).join(' ').toLowerCase().replace(/[\s+()-]/g, '');
+  return `<article class="acct slim" data-state="wait" data-find="${esc(find)}" id="a-${esc(t.id)}">
+<div class="who"><h3>Waiting to link</h3><code>${esc(t.id.slice(0, 8))}</code><span class="muted">signed up ${when(t.createdAt)} · ${t.mode === 'qr' ? 'code or QR on screen' : esc(t.mode)} · removed in ${left} min unless they link</span><span class="dot wait">Waiting</span></div>
+${t.signup ? `<p class="bits">${signupBits(t, byId).join(' · ')}</p>` : ''}
+</article>`;
+}
+function adminCard(t, byCode, rate, byId) {
+  if (!t.linkedAt) return pendingCard(t, byId);
   const [state, stateLabel] = stateOf(t);
   const $ = spend(t, rate);
   const name = t.waName || t.label || (t.linkedAt ? 'No name' : 'Not linked yet');
@@ -310,6 +360,7 @@ function adminCard(t, byCode, rate) {
 <div><small>Control group</small><p>${t.controlGroup ? esc(t.controlGroup) : `<span class="danger">none</span>`}${t.needsManualGroup ? ' <span class="muted">(needs manual)</span>' : ''}</p></div>
 <div><small>Invites</small><p>${t.invited} friend${t.invited === 1 ? '' : 's'} joined${inviter ? `<br><span class="muted">invited by <a href="#a-${esc(inviter.id)}">${esc(inviter.waName || inviter.label || inviter.id.slice(0, 8))}</a></span>` : ''}</p></div>
 </div>
+${t.signup ? `<p class="bits"><b>Signed up from</b> ${signupBits(t, byId).join(' · ')}</p>` : ''}
 ${t.lastError ? `<div class="err"><b>Last error</b> ${when(t.lastError.at)}: ${esc(t.lastError.message)}</div>` : ''}
 <details><summary>Support tools</summary><div class="ops">
 <form data-op action="/admin/plan/${esc(t.id)}" data-reload="1"><div class="f"><label>Plan</label><select name="plan">${PLANS.map((p) => opt(p, `${p} · ${planLabel(p)}`, t.plan)).join('')}</select></div><button class="btn">Set</button></form>
@@ -323,6 +374,7 @@ ${t.lastError ? `<div class="err"><b>Last error</b> ${when(t.lastError.at)}: ${e
 }
 function adminPage(o, nonce) {
   const byCode = new Map(o.tenants.map((t) => [t.inviteCode, t]));
+  const byId = new Map(o.tenants.map((t) => [t.id, t]));
   const rank = (t) => (t.ready ? 0 : t.linkedAt ? 1 : 2);
   const ts = [...o.tenants].sort((a, b) => rank(a) - rank(b) || (b.lastMessageAt || b.linkedAt || b.createdAt) - (a.lastMessageAt || a.linkedAt || a.createdAt));
   const errors = ts.filter((t) => stateOf(t)[0] === 'warn' || stateOf(t)[0] === 'bad').length;
@@ -345,7 +397,7 @@ ${tile('Storage', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</s
 </div>
 <div class="adbar"><input type="text" id="q" placeholder="Search name, number, id, group" autocomplete="off">
 <button class="chip" data-f="all" aria-pressed="true">All</button><button class="chip" data-f="ok" aria-pressed="false">Connected</button><button class="chip" data-f="bad" aria-pressed="false">Need attention</button><button class="chip" data-f="wait" aria-pressed="false">Waiting</button></div>
-${ts.map((t) => adminCard(t, byCode, rate)).join('')}
+${ts.map((t) => adminCard(t, byCode, rate, byId)).join('')}
 <p class="empty" id="none"${ts.length ? ' hidden' : ''}>${ts.length ? 'No account matches.' : 'No accounts yet.'}</p>
 </div>`;
 }
@@ -404,6 +456,18 @@ export function createWebApp() {
     res.type('font/woff2').sendFile(join(FONT_DIR, req.params.file));
   });
 
+  // ---------- returning browsers ----------
+  // Public pages give a browser an anonymous id (a random cookie) and count its visits; see visitors.js.
+  const track = (req, res) => {
+    let id = cookies(req).rv;
+    if (!visitors.VISITOR_RE.test(id || '')) { id = visitors.newVisitorId(); res.append('Set-Cookie', `rv=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${req.secure ? '; Secure' : ''}`); }
+    visitors.visit(id);
+  };
+  // The landing form also says which site sent the visitor and the browser's time zone.
+  const LANDING_JS = `const f=document.getElementById('start');if(f){const set=(n,v)=>{const i=f.querySelector('[name='+n+']');if(i)i.value=v||'';};
+try{set('tz',Intl.DateTimeFormat().resolvedOptions().timeZone);}catch{}
+try{const r=document.referrer&&new URL(document.referrer);if(r&&r.host!==location.host)set('from',r.origin);}catch{}}`;
+
   // ---------- landing ----------
   const STAR_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9 6.6 19.8l1.1-6.1L3.2 9.4l6.1-.8z"/></svg>';
   const CODE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/></svg>';
@@ -411,6 +475,7 @@ export function createWebApp() {
   const FOOT = `<footer class="foot wrap"><p>${esc(PRODUCT_NAME)} is not made by WhatsApp. It&#39;s an unofficial client, so <a href="/privacy">read the risks</a> first.</p><nav><a href="/how">How it works</a><a href="/privacy">Privacy &amp; terms</a><a href="${esc(REPO_URL)}">Open source</a></nav></footer>`;
   const CLOSE = '<section class="close"><div class="wrap"><h2>Go on. Ramble.</h2><a class="cta" href="/#start">Link my WhatsApp</a></div></section>';
   const landing = (req, res, invitedBy = null) => {
+    track(req, res);
     refreshStars();
     res.type('html').send(page(res, PRODUCT_NAME, `
 <section class="hero wrap">
@@ -419,7 +484,7 @@ ${invitedBy ? '<span class="invited">A friend invited you.</span>' : ''}
 <p class="sub">Every voice note, as text you can read at a glance. Right under the recording.</p>
 <form method="post" action="/start" id="start" class="start">
 ${INVITE_CODE ? '<div><label for="invite">Invite code</label><input type="text" id="invite" name="invite" autocomplete="off" required></div>' : ''}
-<input type="hidden" name="consent" value="1">${invitedBy ? `<input type="hidden" name="ref" value="${esc(invitedBy)}">` : ''}
+<input type="hidden" name="consent" value="1"><input type="hidden" name="tz"><input type="hidden" name="from">${invitedBy ? `<input type="hidden" name="ref" value="${esc(invitedBy)}">` : ''}
 <button type="submit" class="cta">Link my WhatsApp</button>
 <p class="fine">By continuing you agree to the <a href="/privacy">privacy &amp; terms</a>.</p>
 </form>
@@ -438,7 +503,7 @@ ${DEMO}
 <a class="gh" href="${esc(REPO_URL)}"><span>${CODE_SVG}View on GitHub</span>${stars == null ? '' : `<span>${STAR_SVG}${compact(stars)}</span>`}</a>
 </div></section>
 ${CLOSE}
-${FOOT}`, { wide: true, nav: NAV }));
+${FOOT}`, { wide: true, nav: NAV, poll: LANDING_JS }));
   };
 
   app.get('/', (req, res) => landing(req, res, cookies(req).rref || null));
@@ -457,7 +522,7 @@ ${FOOT}`, { wide: true, nav: NAV }));
   const NAME = esc(PRODUCT_NAME);
   // A reply, the way WhatsApp draws one: the quoted message sits inside the bubble, above the answer.
   const quote = (who, text) => `<span class="q"><b>${who}</b>${text}</span>`;
-  app.get('/how', (_req, res) => res.type('html').send(page(res, `${PRODUCT_NAME} · How it works`, `
+  app.get('/how', (req, res) => track(req, res) ?? res.type('html').send(page(res, `${PRODUCT_NAME} · How it works`, `
 <section class="howhero wrap"><h1>How it works.</h1><p class="sub">Set it up once. After that, everything happens inside WhatsApp.</p></section>
 <section class="band"><div class="wrap"><ol class="steps long">
 <li><div>Scan a QR code.<span>In WhatsApp: Settings, Linked devices, Link a device. Same as WhatsApp Web. On your phone, a code you type in instead.</span></div></li>
@@ -490,7 +555,7 @@ ${mini(`${NAME} group`, `<div class="me">leave</div><div class="bot">Unlink <b>$
 ${CLOSE}
 ${FOOT}`, { wide: true, nav: NAV })));
 
-  app.get('/privacy', (_req, res) => res.type('html').send(page(res, `${PRODUCT_NAME} · Privacy & terms`, `
+  app.get('/privacy', (req, res) => track(req, res) ?? res.type('html').send(page(res, `${PRODUCT_NAME} · Privacy & terms`, `
 <h1 class="small">Privacy &amp; terms</h1>
 <div class="legal">
 <section><h3>What ${esc(PRODUCT_NAME)} does</h3>
@@ -500,6 +565,7 @@ ${FOOT}`, { wide: true, nav: NAV })));
 <p>Any paid plan pays for the transcription: the minutes of audio turned into text, and the model doing it. It is never a charge for WhatsApp, for access to WhatsApp, or for any WhatsApp feature. Those are free from WhatsApp, and ${esc(PRODUCT_NAME)} does not sell or resell them. A recording that cannot be transcribed is not counted.</p></section>
 <section><h3>What we keep</h3>
 <p>Your WhatsApp session keys. Your settings: which chats are on or off, the language, the names you taught it. The display names of chats and people it has seen, so it can credit a speaker. A short-lived fingerprint of each recording (a hash, not the audio), so a forwarded recording can be matched to its chat. The text of a recording stays in the server&#39;s memory for up to an hour, never on disk, so forwarding the same recording doesn&#39;t transcribe it twice.</p>
+<p>When you sign up: the network address it came from, a rough location (from your browser&#39;s language and time zone), the kind of device and browser, and the site that sent you, if any. Only the operator sees these, to spot abuse and to know how people find ${esc(PRODUCT_NAME)}, and they are deleted with your account. The site&#39;s pages also set a cookie holding a random number, to tell a returning browser from a new one: it counts visits and sign-ups, holds nothing else, and is forgotten after six months without a visit.</p>
 <p>Recordings are deleted right after they become text. The one exception: if you explicitly opt in to help improve the product, your recordings and their text are kept for a limited time and then deleted automatically, and what the service did with each one (the text, who a dictated message was matched to, what was sent) is written to the server log so a bad result can be explained. That is off unless you ask for it. Otherwise message text and transcripts are not stored. They exist only in your WhatsApp.</p></section>
 <section><h3>What passes through</h3>
 <p>As a linked device, every message on your account passes through this server in transit, as it would through WhatsApp Web. Only voice notes and videos in allowed chats are processed. The rest is dropped immediately. Audio, the text and any names in it go to model providers (OpenAI, Groq) under API terms that don&#39;t use your data for training. Server logs hold counts, durations and error codes, never message text, transcripts or names.</p></section>
@@ -525,7 +591,21 @@ ${FOOT}`, { wide: true, nav: NAV })));
     let t;
     // The welcome in WhatsApp is written in the browser's language when we have it (Hebrew or English).
     const locale = guessLanguage(req.get('accept-language')) === 'he' ? 'he' : 'en';
-    try { t = registry.create({ language: '', locale, referredBy: ref }); }
+    // Who this is, coarsely, for the admin page: the network address, a likely country, the device,
+    // where they came from, and whether this browser was here before (see the privacy page).
+    const vid = visitors.VISITOR_RE.test(cookies(req).rv || '') ? cookies(req).rv : null;
+    const seen = vid ? visitors.get(vid) : null;
+    const [prevId, prevKey] = String(cookies(req).rl || '').split('.');
+    const prev = prevId && ID_RE.test(prevId) ? registry.get(prevId) : null;
+    const tz = String(req.body.tz || '');
+    const signup = {
+      at: Date.now(), ip: req.ip || null, country: countryOf(req), tz: TZ_RE.test(tz) && tz.length <= 64 ? tz : null,
+      device: deviceOf(String(req.get('user-agent') || '')), lang: String(req.get('accept-language') || '').split(',')[0].trim().slice(0, 16) || null,
+      from: sourceHost(req.body.from) || null, invited: !!registry.byInvite(ref),
+      visitor: vid, visits: seen?.visits || 0, firstSeen: seen?.first || null, earlierAccounts: (seen?.accounts || []).length,
+      hadAccount: prev && prevKey && prev.manageKey === prevKey ? prev.id : null,
+    };
+    try { t = registry.create({ language: '', locale, referredBy: ref, signup }); if (vid) visitors.addAccount(vid, t.id); }
     catch (e) { return res.status(503).type('html').send(page(res, 'Try again soon', `<h1 class="small">Try again soon</h1><p>${esc(e.message)}</p>`)); }
     setSession(req, res, t);
     res.append('Set-Cookie', `rref=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${req.secure ? '; Secure' : ''}`);
@@ -654,7 +734,7 @@ tick();` }));
     res.set('WWW-Authenticate', `Basic realm="${PRODUCT_NAME} admin"`); res.status(401).send('Authentication required');
   }
   const overview = () => {
-    const ts = registry.list().map((t) => t.status({ history: true }));
+    const ts = registry.list().map((t) => ({ ...t.status({ history: true }), signup: registry.signupOf(t), expiresAt: t.linkedAt ? null : t.createdAt + registry.UNLINKED_TTL_MIN * 60e3 }));
     return {
       product: PRODUCT_NAME, accounts: ts.length, connected: ts.filter((t) => t.ready).length,
       pending: registry.pendingCount(), max: registry.MAX_TENANTS, dataMounted: dataDirIsMount(),

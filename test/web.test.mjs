@@ -85,7 +85,7 @@ test('cross-site POSTs are refused, same-site ones pass', async () => {
 });
 
 test('admin: one card per account shows who it is (WhatsApp name, number); names are escaped', async () => {
-  t.phone = '15550100009'; t.waName = '<img src=x onerror=alert(1)>Dana';
+  t.phone = '15550100009'; t.waName = '<img src=x onerror=alert(1)>Dana'; t.linkedAt = Date.now();
   const html = await (await fetch(`${base}/admin`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).text();
   assert.match(html, new RegExp(`id="a-${t.id}"`));
   assert.match(html, /href="https:\/\/wa\.me\/15550100009"/);
@@ -96,7 +96,28 @@ test('admin: one card per account shows who it is (WhatsApp name, number); names
   const j = await (await fetch(`${base}/admin.json`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).json();
   assert.equal(j.tenants.find((x) => x.id === t.id).phone, '15550100009');
   assert.ok(!('phone' in t.status()), 'the owner-facing status contract is unchanged');
-  t.phone = ''; t.waName = '';
+  t.phone = ''; t.waName = ''; t.linkedAt = 0;
+});
+
+test('a sign-up records where it came from (country, device, source, returning browser); admin shows it in one line', async () => {
+  const first = await fetch(`${base}/`);
+  const rv = /rv=([0-9a-f]{20})/.exec(first.headers.get('set-cookie') || '')?.[1];
+  assert.ok(rv, 'a public page gives the browser an anonymous id');
+  const again = await fetch(`${base}/how`, { headers: { cookie: `rv=${rv}` } });
+  assert.ok(!/rv=/.test(again.headers.get('set-cookie') || ''), 'a known browser keeps its id');
+  const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+  const r = await fetch(`${base}/start`, { method: 'POST', redirect: 'manual', headers: { origin: base, cookie: `rv=${rv}`, 'user-agent': ua, 'accept-language': 'he-IL,he;q=0.9', 'content-type': 'application/x-www-form-urlencoded' }, body: 'consent=1&tz=Asia%2FJerusalem&from=https%3A%2F%2Fwww.example.com%2Fsome%2Fpath%3Fq%3D1' });
+  const made = registry.get(r.headers.get('location').split('/').pop());
+  const u = registry.signupOf(made);
+  assert.equal(u.device, 'iPhone · Safari'); assert.deepEqual(u.country, { code: 'IL', how: 'browser language' });
+  assert.equal(u.tz, 'Asia/Jerusalem'); assert.equal(u.from, 'example.com', 'the host only, never the path or query');
+  assert.equal(u.visitor, rv); assert.equal(u.visits, 2); assert.ok(u.ip);
+  const html = await (await fetch(`${base}/admin`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).text();
+  const card = html.slice(html.indexOf(`id="a-${made.id}"`), html.indexOf('</article>', html.indexOf(`id="a-${made.id}"`)));
+  assert.match(card, /Waiting to link/); assert.match(card, /removed in \d+ min/);
+  assert.match(card, /Israel/); assert.match(card, /iPhone · Safari/); assert.match(card, /from example\.com/); assert.match(card, /returning browser: 1 earlier visit/);
+  assert.ok(!card.includes('Minutes transcribed'), 'no empty stats for an account that never linked');
+  await registry.remove(made.id);
 });
 
 test('admin: wrong passwords are rate limited; healthz says only ok', async () => {

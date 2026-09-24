@@ -94,13 +94,14 @@ function wire(t) {
   t.onLeave = (me) => remove(me.id).catch((e) => console.warn(`${me.tag} leave failed:`, e.message));
 }
 
-export function create({ language = '', locale = '', label = '', plan = undefined, referredBy = '', start = true } = {}) {
+export function create({ language = '', locale = '', label = '', plan = undefined, referredBy = '', signup = null, start = true } = {}) {
   if (tenants.size >= MAX_TENANTS) throw new Error('This server is full right now. Please try again later.');
   if (pendingCount() >= MAX_PENDING) throw new Error('Too many sign-ups are waiting to be linked right now. Please try again in a few minutes.');
   const rec = { id: newId(), label: String(label).slice(0, 60), language: String(language).slice(0, 5), ...(locale === 'he' || locale === 'en' ? { locale } : {}), createdAt: Date.now(), manageKey: newId(), inviteCode: newInviteCode(), ...(byInvite(referredBy) ? { referredBy } : {}), ...(plan ? { plan } : {}) };
   const dir = join(tenantsDir, rec.id);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(dir, 'tenant.json'), JSON.stringify(rec, null, 2), { mode: 0o600 });
+  if (signup) writeFileSync(join(dir, 'signup.json'), JSON.stringify(signup), { mode: 0o600 });
   const t = new Tenant(rec, dir);
   wire(t);
   tenants.set(rec.id, t);
@@ -110,6 +111,11 @@ export function create({ language = '', locale = '', label = '', plan = undefine
 }
 
 export const get = (id) => tenants.get(id) || null;
+
+/** Where a sign-up came from (address, device, browser language…), for the admin page. Erased with the account. */
+export function signupOf(t) {
+  try { return JSON.parse(readFileSync(join(t.dir, 'signup.json'), 'utf8')); } catch { return null; }
+}
 
 /** Invalidate an account's private link and issue a new one. */
 export function rotateKey(t) {
