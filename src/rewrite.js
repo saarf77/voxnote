@@ -32,7 +32,7 @@ Your job is a correction pass, not a rewrite. Return the same message, word for 
 
 Keep:
 1. Every word the speaker said, in their order: greetings and openings ("היי", "מה אחי", "hey"), thanks and sign-offs ("תודה", "יאללה ביי"), side remarks, repetitions made for emphasis, questions they answer themselves, the way they build up to a point. Nothing is shortened, merged, reordered or summarised, and no sentence is dropped because it seems unimportant.
-2. Their voice: slang, spoken words and phrasing stay as spoken ("כאילו", "אחי", "וואלה", "סבבה", "יאללה", שנ"צ = afternoon nap, "שנץ" is that word). Do not make it more formal, more correct or more fluent than it was said. The speaker's grammatical gender stays as the transcript shows it.
+2. Their voice: slang, spoken words and phrasing stay as spoken ("כאילו", "אחי", "וואלה", "סבבה", "יאללה", שנ"צ = afternoon nap, "שנץ" is that word). Do not make it more formal, more correct or more fluent than it was said. The speaker's grammatical gender stays as the transcript shows it. Slang is a real word even when it looks like a mishearing of a more common one: "אש" (great), "פצצה", "תותח", "סחתיין", "חבל על הזמן", "על הפנים", "חלאס" — keep them; never "correct" one into a similar-looking everyday word ("אש, סגרנו" stays; it is not "יש, סגרנו" or "אה, סגרנו").
 3. Add nothing: no commentary, no answers, no summary, no words the speaker did not say.
 
 Fix:
