@@ -149,6 +149,7 @@ export class Tenant {
     this.contactNames = new Map(loadJson(this.f('contacts.json'), []));
     this.savedNames = new Set(loadJson(this.f('saved.json'), []));   // contacts whose name came from the phone's address book (partial: only those synced since linking)
     this.groupNames = new Map();
+    this.altIds = new Map(loadJson(this.f('altids.json'), [])); // phone id ⇄ lid of the same private chat
     this.activity = new Map(loadJson(this.f('activity.json'), [])); // private chat → how many messages the owner sent it (a count, no content): ranks contacts for a dictated message
     this.dictated = new Map();   // our confirmation post id → the message we sent for the owner (memory only, for "undo")
     this.ownPosts = new Set();   // ids of messages we posted (memory only): their echo must never be read as the owner's answer
@@ -303,7 +304,7 @@ Recordings are deleted the moment they become text.
     if (this.ownerLocale() === 'he') return `*הפקודות של ${PRODUCT_NAME}*
 כל פקודה היא מילה אחת באנגלית.
 
-• הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה (למשל *exclude אמא*), ו-*include* כדי להחזיר. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההקלטות שלך. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
+• הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה, או מספר טלפון (למשל *exclude אמא*), ו-*include* כדי להחזיר. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההקלטות שלך. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
 • שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
 • עצירה והמשך, *pause* / *resume*: לכתוב כאן כדי לעצור את כל התמלולים, ולהמשיך מתי שרוצים.
@@ -312,7 +313,7 @@ Recordings are deleted the moment they become text.
     return `*${PRODUCT_NAME} commands*
 Each one is a single word.
 
-• *include* / *exclude*: write it here with a contact's or a group's name (*exclude Mom*) to switch that chat, or reply it to a forwarded recording's text. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included. Groups start off, private chats start on.
+• *include* / *exclude*: write it here with a contact's or a group's name, or a phone number (*exclude Mom*), to switch that chat, or reply it to a forwarded recording's text. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included. Groups start off, private chats start on.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
 • *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
 • *pause* / *resume*: write it here to stop all transcription for a while, and to start again.
@@ -403,14 +404,31 @@ Each one is a single word.
 
   onChats(chats) {
     if (!Array.isArray(chats)) return;
-    let changed = false;
+    let changed = false, named = false;
     for (const c of chats) {
       const id = c?.id; if (!id) continue;
       const arch = c.archived ?? c.archive;
       if (arch === true && !this.archived.has(id)) { this.archived.add(id); changed = true; }
       else if (arch === false && this.archived.has(id)) { this.archived.delete(id); changed = true; }
+      // The name the chat list shows — for a business or anyone not saved, often the only one there is.
+      const name = String(c.name || c.displayName || '').trim().slice(0, 80);
+      if (name && id.endsWith('@g.us')) { if (!this.groupNames.get(id)) this.groupNames.set(id, name); }
+      else if (name && !this.isSelfChat(id)) named = this.learnName(id, name) || named;
+      if (c.pnJid && c.lidJid) this.learnAltIds(jidNormalizedUser(c.pnJid), jidNormalizedUser(c.lidJid));
     }
     if (changed) this.saveSet('archived.json', this.archived);
+    if (named) this.saveMap('contacts.json', this.contactNames, 5000);
+  }
+  /** A display name for a chat the owner has not saved: never over a saved name. Returns true if it changed. */
+  learnName(jid, name) {
+    if (!jid || !name || this.savedNames.has(jid) || this.contactNames.get(jid) === name) return false;
+    this.contactNames.set(jid, name); return true;
+  }
+  /** The phone id and the lid of one private chat, when WhatsApp hands them over together. */
+  learnAltIds(pn, lid) {
+    if (!pn || !lid || this.altIds.get(pn) === lid) return;
+    this.altIds.set(pn, lid); this.altIds.set(lid, pn);
+    this.saveMap('altids.json', this.altIds, 6000);
   }
   onContacts(contacts) {
     if (!Array.isArray(contacts)) return;
@@ -507,6 +525,8 @@ Each one is a single word.
     else if (this.isSelfChat(n.chatId)) chatName = 'Notes to self';
     else {
       if (!n.fromMe && n.senderName && !this.savedNames.has(n.chatId)) this.contactNames.set(n.chatId, n.senderName);
+      if (!n.fromMe && m.verifiedBizName && this.learnName(n.chatId, String(m.verifiedBizName).trim().slice(0, 80))) this.saveMap('contacts.json', this.contactNames, 5000);
+      if (n.chatAlt) this.learnAltIds(...(n.chatId.endsWith('@lid') ? [n.chatAlt, n.chatId] : [n.chatId, n.chatAlt]));
       chatName = this.contactNames.get(n.chatId) || n.chatId.split('@')[0];
     }
 
@@ -927,6 +947,7 @@ Each one is a single word.
   async chatIdsFor(jid) {
     const ids = new Set([jid]);
     if (jid.endsWith('@g.us')) return [...ids];
+    if (this.altIds.get(jid)) ids.add(this.altIds.get(jid));
     const map = this.sock?.signalRepository?.lidMapping;
     try {
       if (jid.endsWith('@lid')) { const pn = await map?.getPNForLID(jid); if (pn) ids.add(jidNormalizedUser(pn)); }
@@ -974,6 +995,30 @@ Each one is a single word.
     return options.slice(0, 9);
   }
 
+  /**
+   * "exclude 050-123-4567" / "+44 7700 900123": the private chat with that number — for a business
+   * or anyone whose name was never seen. Known chats whose number ends the same way come first;
+   * otherwise WhatsApp is asked whether the full number has an account.
+   */
+  async switchByNumber(raw) {
+    let digits = raw.replace(/\D/g, '');
+    const intl = /^\s*(\+|00)/.test(raw);
+    if (intl) digits = digits.replace(/^00/, '');
+    const tail = digits.replace(/^0+/, '').slice(-9);
+    if (tail.length < 6) return [];
+    const known = new Set([...this.contactNames.keys(), ...this.activity.keys(), ...this.altIds.keys(), ...[...this.mediaSrc.values()].map((v) => v.chatId)]);
+    let hits = [...known].filter((j) => j.endsWith('@s.whatsapp.net') && j.split('@')[0].endsWith(tail));
+    if (!hits.length && this.sock?.onWhatsApp) {
+      // A local number takes the owner's own country code — only when the owner's number shows it plainly.
+      const cc = (this.ownId || '').match(/^(972|44|1)/)?.[1];
+      const full = intl ? digits : digits.startsWith('0') && cc ? cc + digits.replace(/^0+/, '') : null;
+      if (full) try { const [r] = await this.sock.onWhatsApp(full); if (r?.exists && r.jid) hits = [jidNormalizedUser(r.jid)]; } catch { /* lookup unavailable */ }
+    }
+    const options = [];
+    for (const jid of new Set(hits)) options.push({ chatId: jid, ids: await this.chatIdsFor(jid), name: this.contactNames.get(jid) || `+${jid.split('@')[0]}`, isGroup: false });
+    return options.slice(0, 9);
+  }
+
   switchLabel(o) {
     const he = this.ownerLocale() === 'he';
     if (o.isGroup) return `${o.name} (${he ? 'קבוצה' : 'group'})`;
@@ -995,10 +1040,12 @@ Each one is a single word.
     } else if (!name) {
       await this.sendPaced(n.chatId, { text: this.switchStatus(action) }, { quoted: m }).catch(() => {});
       return;
-    } else options = await this.switchOptions(name);
+    } else options = /^[+\d][\d\s()-]{5,}$/.test(name) ? await this.switchByNumber(name) : await this.switchOptions(name);
     this.trace('switch.match', { action, name, options: options.map((o) => ({ chatId: o.chatId, ids: o.ids, name: o.name })) });
     if (!options.length) {
-      await this.sendPaced(n.chatId, { text: he ? `🤷 לא מצאתי איש קשר או קבוצה בשם *${name}*. שום דבר לא השתנה.` : `🤷 No contact or group called *${name}*. Nothing changed.` }, { quoted: m }).catch(() => {});
+      await this.sendPaced(n.chatId, { text: he
+        ? `🤷 לא מצאתי איש קשר או קבוצה בשם *${name}*. שום דבר לא השתנה.\nאפשר לכתוב את המספר במקום השם (*${action} 050-1234567*), או להעביר לכאן הודעה קולית מהצ'אט ולענות לה *${action}*.`
+        : `🤷 No contact or group called *${name}*. Nothing changed.\nWrite the number instead of the name (*${action} +1 555 123 4567*), or forward a voice note from that chat to here and reply *${action}* to it.` }, { quoted: m }).catch(() => {});
       return;
     }
     this.pendingSend = null; this.pendingLeave = null; // the newest question owns the next "yes"

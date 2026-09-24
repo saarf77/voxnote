@@ -27,7 +27,7 @@ message explains everything:
 
 | Do this | Effect |
 |---|---|
-| Write `exclude Mom` / `include Mom` in the *Ramble* group (a contact's or a group's name) | lists the matching chats if there are several, then asks; `yes` switches that chat. An excluded chat is not transcribed at all, your own voice notes included |
+| Write `exclude Mom` / `include Mom` in the *Ramble* group (a contact's or a group's name, the name a business shows, or a phone number) | lists the matching chats if there are several, then asks; `yes` switches that chat. An excluded chat is not transcribed at all, your own voice notes included |
 | Forward a voice note from any chat into the *Ramble* group | its text + whether that chat is transcribed; reply `exclude` / `include` to switch it (it asks first) |
 | Write `exclude` or `include` alone | what is excluded / which groups are transcribed |
 | Reply `delete` to anything Ramble posted | deletes it for everyone |

@@ -136,3 +136,41 @@ test('Hebrew: every line of the questions and answers opens with a Hebrew letter
   await say(t, 'exclude אמא'); await say(t, 'yes'); await say(t, 'include אמא'); await say(t, 'no'); await say(t, 'exclude'); await say(t, 'include');
   for (const line of t.out.flatMap((o) => o.text.split('\n')).filter((l) => l.trim())) assert.match(line.match(/\p{L}/u)[0], /[֐-׿]/, line);
 });
+
+test('a business that is not a saved contact is found by the name the chat list shows, whatever the case', async () => {
+  const t = tenant();
+  t.onChats([{ id: '888@s.whatsapp.net', name: 'Sunrise Bakery', pnJid: '888@s.whatsapp.net', lidJid: '8801@lid' }]);
+  await say(t, 'exclude sunrise bakery');
+  assert.match(t.out[0].text, /Exclude \*Sunrise Bakery \(…888\)\*\?/);
+  await say(t, 'yes');
+  assert.ok(t.muted.has('888@s.whatsapp.net') && t.muted.has('8801@lid'), 'the lid the chat came with is switched too');
+});
+
+test('a chat-list name never overwrites a name the owner saved', () => {
+  const t = tenant(); t.savedNames = new Set(['444@s.whatsapp.net']);
+  t.onChats([{ id: '444@s.whatsapp.net', name: 'Something Else' }]);
+  assert.equal(t.contactNames.get('444@s.whatsapp.net'), 'Ron Levi');
+});
+
+test('a business\'s verified name on its message is learnt', async () => {
+  const t = tenant();
+  const m = { key: { remoteJid: '889@s.whatsapp.net', fromMe: false, id: 'B1' }, verifiedBizName: 'Corner Garage', message: { conversation: 'your car is ready' } };
+  await t.onMessage(m, t.sock);
+  assert.equal(t.contactNames.get('889@s.whatsapp.net'), 'Corner Garage');
+});
+
+test('by number: a known chat whose number ends the same way, or one WhatsApp confirms — and it still asks', async () => {
+  const t = tenant(); t.ownId = '972500000001@s.whatsapp.net'; t.locale = 'en';
+  t.contactNames.set('972541112233@s.whatsapp.net', 'Plumber');
+  await say(t, 'exclude 054-111-2233');
+  assert.match(t.out.at(-1).text, /Exclude \*Plumber \(…2233\)\*\?/); assert.equal(t.muted.size, 0);
+  await say(t, 'no');
+  let asked = null; t.sock.onWhatsApp = async (num) => { asked = num; return [{ exists: true, jid: '972529998877@s.whatsapp.net' }]; };
+  await say(t, 'exclude 052-999-8877');
+  assert.equal(asked, '972529998877', 'a local number takes the owner\'s country code');
+  assert.match(t.out.at(-1).text, /Exclude \*\+972529998877 \(…8877\)\*\?/);
+  await say(t, 'yes'); assert.ok(t.muted.has('972529998877@s.whatsapp.net'));
+  t.sock.onWhatsApp = async () => [{ exists: false }];
+  await say(t, 'exclude +44 7700 900000');
+  assert.match(t.out.at(-1).text, /No contact or group called/); assert.match(t.out.at(-1).text, /Write the number instead/);
+});
