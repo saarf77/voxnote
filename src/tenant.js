@@ -143,6 +143,7 @@ export class Tenant {
     this.target = loadJson(this.f('target.json'), null);           // control group { jid, name }
     this.muted = new Set(loadJson(this.f('muted.json'), []));       // private chats switched off
     this.enabled = new Set(loadJson(this.f('enabled.json'), []));   // groups switched on
+    this.quiet = new Set(loadJson(this.f('quiet.json'), []));       // chats in private mode: other people's recordings are transcribed into the control group only
     this.archived = new Set(loadJson(this.f('archived.json'), []));
     this.fwdMap = new Map(loadJson(this.f('fwdmap.json'), []));     // our control-group post id → source chat
     this.mediaSrc = new Map(loadJson(this.f('mediasrc.json'), [])); // media sha256 → source chat
@@ -279,7 +280,7 @@ export class Tenant {
 
 • כל הודעה קולית שנשלחת ממך, בכל צ'אט, מקבלת טקסט ממש מתחתיה.
 • גם הודעות קוליות שמגיעות אליך בצ'אטים פרטיים.
-• קבוצות כבויות. כדי להפעיל קבוצה: לכתוב כאן *include* ואת שם הקבוצה.
+• קבוצות כבויות. כדי להפעיל קבוצה: לכתוב כאן *include* ואת שם הקבוצה, או *private* ואת השם כדי לקבל את הטקסט רק כאן.
 • כדי להפסיק להשתמש: לכתוב כאן *leave*.
 • לרשימת הפקודות: לכתוב כאן *help*.
 
@@ -291,7 +292,7 @@ It's linked to your WhatsApp. This group is your control panel, and only you are
 
 • Every voice note you send, in any chat, gets its text right under it.
 • So do the voice notes people send you in private chats.
-• Groups are off. To turn one on, write *include* and the group's name here.
+• Groups are off. To turn one on, write *include* and the group's name here, or *private* and the name to get the text only here.
 • To stop using ${PRODUCT_NAME}, write *leave* here.
 • For the list of commands, write *help* here.
 
@@ -305,6 +306,7 @@ Recordings are deleted the moment they become text.
 כל פקודה היא מילה אחת באנגלית.
 
 • הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה, או מספר טלפון (למשל *exclude אמא*), ו-*include* כדי להחזיר. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההקלטות שלך. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
+• תמלול בפרטיות, *private*: לכתוב כאן *private* ואת השם, והטקסט של הקלטות שאחרים שולחים שם יגיע רק לכאן, בלי שום דבר בצ'אט ההוא.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
 • שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
 • עצירה והמשך, *pause* / *resume*: לכתוב כאן כדי לעצור את כל התמלולים, ולהמשיך מתי שרוצים.
@@ -314,6 +316,7 @@ Recordings are deleted the moment they become text.
 Each one is a single word.
 
 • *include* / *exclude*: write it here with a contact's or a group's name, or a phone number (*exclude Mom*), to switch that chat, or reply it to a forwarded recording's text. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included. Groups start off, private chats start on.
+• *private*: write it here with a name, and the text of recordings other people send in that chat comes only here; nothing is posted there.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
 • *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
 • *pause* / *resume*: write it here to stop all transcription for a while, and to start again.
@@ -549,7 +552,7 @@ Each one is a single word.
     if (inControl) want = true;                                                       // probe: always
     else if (this.isExcluded(n)) want = false;                                        // excluded by the owner: nothing, their own notes included
     else if (n.fromMe && n.isVoice) want = true;                                      // owner's notes: everywhere else
-    else if (n.isGroup) want = this.enabled.has(n.chatId) && !this.archived.has(n.chatId);
+    else if (n.isGroup) want = (this.enabled.has(n.chatId) || this.isQuiet(n)) && !this.archived.has(n.chatId);
     else want = !this.archived.has(n.chatId);
     if (!want) return;
     // Paused by the owner: nothing is transcribed, nowhere. A recording in the group gets a reminder.
@@ -561,6 +564,14 @@ Each one is a single word.
     // One recording, one text: the control group is ours alone, everywhere else another
     // account on this server may be looking at the very same message.
     if (inControl) { await this.handleRecording(m, n, chatName, isVideo, inControl); return; }
+    // Private mode: someone else's recording, whose text comes to the control group only. That is the
+    // owner's own copy, not a post in the chat, so it takes no part in deciding who posts there.
+    if (!n.fromMe && this.isQuiet(n)) {
+      // A copy in the control group would outlive a disappearing recording: none is made.
+      if (n.expiration) { console.log(`${this.tag} ⏭️ private transcript skipped (disappearing chat)`); return; }
+      await this.handleRecording(m, n, chatName, isVideo, inControl);
+      return;
+    }
     const key = `${n.id}|${n.mediaSha || ''}`;
     if (!await this.claimRecording(key, n)) return;
     let posted = false;
@@ -764,12 +775,30 @@ Each one is a single word.
   /** Resolves true once the text is in the chat (another account may be waiting to hear). */
   deliver(n, chatName, text, isVideo, original) {
     if (this.stopped) return false;
+    if (!n.fromMe && this.isQuiet(n)) return this.deliverPrivate(n, chatName, text, isVideo);
     const body = n.fromMe ? `${SELF_PREFIX}${text}` : `${isVideo ? '🎬' : '🎙️'} *${n.senderName || chatName || 'unknown'}*: ${text}`;
     // In a disappearing chat the text disappears on the same timer as the recording.
     const opts = { quoted: original, ...(n.expiration ? { ephemeralExpiration: n.expiration } : {}) };
     return this.sendPaced(n.chatId, { text: body }, opts)
       .then(() => { console.log(`${this.tag} 📝 posted ${n.fromMe ? 'own' : 'their'} transcript (${n.isGroup ? 'group' : 'private'})`); return true; })
       .catch((e) => { console.warn(`${this.tag} post failed: ${firstLine(e)}`); return false; });
+  }
+
+  /**
+   * Private mode: the text goes to the control group as a message of its own, nothing to the chat.
+   * Replying include / exclude / private to it switches that chat, and delete removes it.
+   */
+  deliverPrivate(n, chatName, text, isVideo) {
+    if (!this.target) return false;
+    const sender = n.senderName || chatName || 'unknown';
+    const head = `${isVideo ? '🎬' : '🎙️'} *${sender}*${n.isGroup && chatName ? ` ${this.ownerLocale() === 'he' ? 'ב' : 'in '}*${chatName}*` : ''}`;
+    return this.sendPaced(this.target.jid, { text: `${head}\n${text}` })
+      .then((sent) => {
+        if (sent?.key?.id) this.recordFwd(sent.key.id, { chatId: n.chatId, name: chatName || sender });
+        console.log(`${this.tag} 📝 private transcript (${n.isGroup ? 'group' : 'private'})`);
+        return false; // not a post in the chat: nobody else's text there depends on it
+      })
+      .catch((e) => { console.warn(`${this.tag} private post failed: ${firstLine(e)}`); return false; });
   }
 
   /** A recording forwarded into the control group: its text + whether its source chat is on or off. */
@@ -779,10 +808,14 @@ Each one is a single word.
     let tail;
     if (!src) tail = "_(Couldn't tell which chat this came from — only recordings I saw arrive can be traced.)_";
     else {
-      const on = this.chatIncluded(src.chatId);
+      const mode = this.chatMode(src.chatId), nm = src.name;
       tail = this.ownerLocale() === 'he'
-        ? (on ? `🟢 מתומלל: *«${src.name}»*. כדי להפסיק, לענות *exclude*.` : `🔇 לא מתומלל: *«${src.name}»*. כדי לתמלל, לענות *include*.`)
-        : (on ? `🟢 *«${src.name}»* is transcribed. Reply *exclude* to stop.` : `🔇 *«${src.name}»* is not transcribed. Reply *include* to start.`);
+        ? { included: `🟢 מתומלל: *«${nm}»*, והטקסט מופיע בצ'אט. לענות *private* כדי לקבל אותו רק כאן, או *exclude* כדי להפסיק.`,
+          private: `🔒 מתומלל בפרטיות: *«${nm}»*. הטקסט מגיע לכאן, ושום דבר לא נכתב שם. לענות *include* כדי שיופיע בצ'אט, או *exclude* כדי להפסיק.`,
+          off: `🔇 לא מתומלל: *«${nm}»*. לענות *include* כדי לקבל טקסט בצ'אט, או *private* כדי לקבל אותו רק כאן.` }[mode]
+        : { included: `🟢 *«${nm}»* is transcribed, with the text in the chat. Reply *private* to get it only here, or *exclude* to stop.`,
+          private: `🔒 *«${nm}»* is transcribed privately: the text comes here and nothing is posted there. Reply *include* to post it in the chat, or *exclude* to stop.`,
+          off: `🔇 *«${nm}»* is not transcribed. Reply *include* to get the text in the chat, or *private* to get it only here.` }[mode];
     }
     this.sendPaced(this.target.jid, { text: `${isVideo ? '🎬' : '🎙️'} ${src ? `from *${src.name}*` : 'forwarded recording'}\n${body}\n\n${tail}` }, { quoted: original })
       .then((sent) => { if (src && sent?.key?.id) this.recordFwd(sent.key.id, src); })
@@ -940,6 +973,10 @@ Each one is a single word.
   // ---------- include / exclude a chat ----------
   /** True when this recording's chat was excluded by the owner, under either of its ids. */
   isExcluded(n) { return this.muted.has(n.chatId) || (!!n.chatAlt && this.muted.has(n.chatAlt)); }
+  /** True when this recording's chat is in private mode, under either of its ids. */
+  isQuiet(n) { return this.quiet.has(n.chatId) || (!!n.chatAlt && this.quiet.has(n.chatAlt)); }
+  /** What happens to other people's recordings in this chat: 'included' (text in the chat), 'private' (text here), or 'off'. */
+  chatMode(chatId) { return this.muted.has(chatId) ? 'off' : this.quiet.has(chatId) ? 'private' : this.chatIncluded(chatId) ? 'included' : 'off'; }
   /** Whether other people's recordings in this chat are transcribed. */
   chatIncluded(chatId) { return chatId.endsWith('@g.us') ? this.enabled.has(chatId) && !this.muted.has(chatId) : !this.muted.has(chatId); }
 
@@ -1061,7 +1098,10 @@ Each one is a single word.
   async confirmSwitch(m, chatId, action, options, chosen) {
     const he = this.ownerLocale() === 'he';
     const label = this.switchLabel(chosen);
-    const text = action === 'exclude'
+    const text = action === 'private'
+      ? (he ? `🔒 לתמלל את *${label}* בפרטיות?\nהקלטות שאחרים שולחים שם יתומללו, והטקסט יגיע רק לקבוצה הזו. שום דבר לא ייכתב בצ'אט ההוא. ההודעות הקוליות שלך שם עדיין יקבלו טקסט מתחתיהן.\n\nלענות *yes* כדי לעבור, *no* כדי לבטל.`
+        : `🔒 Transcribe *${label}* privately?\nRecordings people send there will be transcribed, and the text will come only to this group. Nothing is posted in that chat. Your own voice notes there still get their text under them.\n\nReply *yes* to switch, *no* to cancel.`)
+      : action === 'exclude'
       ? (he ? `🔇 להחריג את *${label}*?\nשום הקלטה בצ'אט הזה לא תתומלל, גם לא ההקלטות שלך.\n\nלענות *yes* כדי להחריג, *no* כדי לבטל.`
         : `🔇 Exclude *${label}*?\nNo recording in this chat will be transcribed, your own voice notes included.\n\nReply *yes* to exclude, *no* to cancel.`)
       : (he ? `🟢 לתמלל את *${label}*?\nהקלטות בצ'אט הזה יקבלו טקסט מתחתיהן.\n\nלענות *yes* כדי לתמלל, *no* כדי לבטל.`
@@ -1089,19 +1129,24 @@ Each one is a single word.
     }
     if (lower !== 'yes') return false;
     this.pendingSwitch = null;
-    await this.applySwitch(p.chosen, p.action === 'include');
+    await this.applySwitch(p.chosen, p.action);
     return true;
   }
 
   /** Switch the chat, under every id it may arrive with, and say so in the control group. */
-  async applySwitch({ chatId, ids, name, isGroup }, include) {
+  async applySwitch({ chatId, ids, name, isGroup }, action) {
+    // One mode per chat: the three sets never hold the same chat.
     const all = new Set([...(ids || []), ...(await this.chatIdsFor(chatId))]);
+    const include = action === 'include', quiet = action === 'private';
     if (isGroup) { include ? this.enabled.add(chatId) : this.enabled.delete(chatId); this.saveSet('enabled.json', this.enabled); }
-    for (const id of all) include ? this.muted.delete(id) : this.muted.add(id);
-    this.saveSet('muted.json', this.muted);
-    console.log(`${this.tag} ${include ? '🟢 included' : '🔇 excluded'}: a ${isGroup ? 'group' : 'private chat'}`);
+    for (const id of all) { action === 'exclude' ? this.muted.add(id) : this.muted.delete(id); quiet ? this.quiet.add(id) : this.quiet.delete(id); }
+    this.saveSet('muted.json', this.muted); this.saveSet('quiet.json', this.quiet);
+    console.log(`${this.tag} ${include ? '🟢 included' : quiet ? '🔒 private' : '🔇 excluded'}: a ${isGroup ? 'group' : 'private chat'}`);
     const he = this.ownerLocale() === 'he';
-    const text = include
+    const text = quiet
+      ? (he ? `🔒 בוצע: *${name}* מתומלל בפרטיות. הטקסט של כל הקלטה שם יגיע לכאן. כדי שיופיע בצ'אט: *include ${name}*. כדי להפסיק: *exclude ${name}*.`
+        : `🔒 Done: *${name}* is transcribed privately. The text of every recording there comes here. To post it in the chat instead: *include ${name}*. To stop: *exclude ${name}*.`)
+      : include
       ? (he ? `🟢 בוצע: *${name}* מתומלל. הטקסט יופיע בצ'אט, מתחת לכל הקלטה. כדי להפסיק: *exclude ${name}*.` : `🟢 Done: *${name}* is transcribed. The text appears in the chat, under each recording. To stop: *exclude ${name}*.`)
       : (he ? `🔇 בוצע: *${name}* מוחרג. שום הקלטה בו לא מתומללת. כדי להחזיר: *include ${name}*.` : `🔇 Done: *${name}* is excluded. Nothing in it is transcribed. To bring it back: *include ${name}*.`);
     const sent = await this.sendPaced(this.target.jid, { text }).catch(() => null);
@@ -1114,8 +1159,11 @@ Each one is a single word.
     const nameOf = (jid) => this.contactNames.get(jid) || this.groupNames.get(jid) || null;
     const names = (ids) => [...new Set([...ids].map(nameOf).filter(Boolean))];
     const excluded = names(this.muted), included = names([...this.enabled].filter((j) => !this.muted.has(j)));
-    const list = action === 'exclude' ? excluded : included;
-    const head = action === 'exclude'
+    const privately = names(this.quiet);
+    const list = action === 'exclude' ? excluded : action === 'private' ? privately : included;
+    const head = action === 'private'
+      ? (he ? (list.length ? `🔒 מתומללים בפרטיות: ${list.join(', ')}` : "🔒 אין צ'אטים שמתומללים בפרטיות.") : (list.length ? `🔒 Transcribed privately: ${list.join(', ')}` : '🔒 No chat is transcribed privately.'))
+      : action === 'exclude'
       ? (he ? (list.length ? `🔇 מוחרגים: ${list.join(', ')}` : "🔇 אין צ'אטים מוחרגים.") : (list.length ? `🔇 Excluded: ${list.join(', ')}` : '🔇 No chat is excluded.'))
       : (he ? (list.length ? `🟢 קבוצות מתומללות: ${list.join(', ')}` : '🟢 אף קבוצה לא מתומללת.') : (list.length ? `🟢 Groups transcribed: ${list.join(', ')}` : '🟢 No group is transcribed.'));
     return `${head}\n${he ? `כדי לשנות: *${action}* ואת השם, למשל *${action} אמא*.` : `To switch one: *${action}* and the name, e.g. *${action} Mom*.`}`;
@@ -1181,7 +1229,7 @@ Each one is a single word.
     if (inControl && n.fromMe && !n.hasMedia && await this.handleDictationReply(m, n, lower)) return true;
     // include / exclude a chat: by name, or as a reply to a forwarded recording's text. Always asks first.
     if (inControl && n.fromMe && !n.hasMedia && !this.ownPosts.has(n.id) && await this.handleSwitchReply(m, n, lower)) return true;
-    const sw = /^(include|exclude)(?:\s+([\s\S]+))?$/i.exec(txt);
+    const sw = /^(include|exclude|private)(?:\s+([\s\S]+))?$/i.exec(txt);
     if (inControl && n.fromMe && !n.hasMedia && sw && !this.ownPosts.has(n.id)) {
       await this.askSwitch(m, n, sw[1].toLowerCase(), (sw[2] || '').trim());
       return true;
@@ -1228,7 +1276,7 @@ Each one is a single word.
       id: this.id, label: this.label, language: this.language || 'auto', createdAt: this.createdAt, linkedAt: this.linkedAt || null,
       plan: this.plan, model: planLabel(this.plan), abModel: this.abModel || null, keepAudio: this.keepAudio, paused: this.paused,
       mode: this.mode, ready: this.ready, controlGroup: this.target?.name || null, needsManualGroup: this.needsManualGroup,
-      enabledGroups: this.enabled.size, mutedChats: this.muted.size, minutesToday: Math.round(this.usageSecondsToday() / 60),
+      enabledGroups: this.enabled.size, mutedChats: this.muted.size, privateChats: this.quiet.size, minutesToday: Math.round(this.usageSecondsToday() / 60),
       lastMessageAt: this.lastMessageAt || null, stats: this.stats, lastError: this.lastError,
       inviteCode: this.inviteCode, invited: this.invited, dailyMinutes: this.dailyCapMinutes(), bonusMinutes: this.bonusMinutes,
     };

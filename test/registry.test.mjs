@@ -38,7 +38,7 @@ test('loadAll restores the migrated account with its control group and enabled g
 test('status never includes message content or the QR unless asked', () => {
   const s = registry.list()[0].status();
   assert.ok(!('qr' in s));
-  assert.deepEqual(Object.keys(s).sort(), ['abModel', 'bonusMinutes', 'controlGroup', 'createdAt', 'dailyMinutes', 'enabledGroups', 'id', 'inviteCode', 'invited', 'keepAudio', 'label', 'language', 'lastError', 'lastMessageAt', 'linkedAt', 'minutesToday', 'mode', 'model', 'mutedChats', 'needsManualGroup', 'paused', 'plan', 'ready', 'stats'].sort());
+  assert.deepEqual(Object.keys(s).sort(), ['abModel', 'bonusMinutes', 'controlGroup', 'createdAt', 'dailyMinutes', 'enabledGroups', 'id', 'inviteCode', 'invited', 'keepAudio', 'label', 'language', 'lastError', 'lastMessageAt', 'linkedAt', 'minutesToday', 'mode', 'model', 'mutedChats', 'needsManualGroup', 'paused', 'plan', 'privateChats', 'ready', 'stats'].sort());
 });
 
 test('a sign-up that never linked is expired; a linked account is not', async () => {
