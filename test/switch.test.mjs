@@ -174,3 +174,26 @@ test('by number: a known chat whose number ends the same way, or one WhatsApp co
   await say(t, 'exclude +44 7700 900000');
   assert.match(t.out.at(-1).text, /No contact or group called/); assert.match(t.out.at(-1).text, /Write the number instead/);
 });
+
+test('a person is listed once, under the name the owner saved, even when they gave themselves another', async () => {
+  const t = tenant();
+  // Saved as "Noam" on the phone id; the lid carries the name they chose for themselves.
+  t.contactNames = new Map([['972500000001@s.whatsapp.net', 'Noam'], ['1001@lid', 'Noam Barak'], ['972500000002@s.whatsapp.net', 'Noam Peretz']]);
+  t.savedNames = new Set(['972500000001@s.whatsapp.net', '972500000002@s.whatsapp.net']);
+  lids.set('972500000001@s.whatsapp.net', '1001@lid');
+  try {
+    const options = await t.switchOptions('Noam');
+    const labels = options.map((o) => t.switchLabel(o));
+    assert.deepEqual(labels.sort(), ['Noam (…0001)', 'Noam Peretz (…0002)'], labels.join(' | '));
+    const noam = options.find((o) => o.ids.includes('1001@lid'));
+    assert.ok(noam.ids.includes('972500000001@s.whatsapp.net'), 'both ids of the one person switch together');
+  } finally { lids.delete('972500000001@s.whatsapp.net'); }
+});
+
+test('a voice note arriving under the lid keeps the saved name; the self-chosen one does not overwrite it', async () => {
+  const t = tenant();
+  t.contactNames = new Map([['972500000001@s.whatsapp.net', 'Noam']]); t.savedNames = new Set(['972500000001@s.whatsapp.net']);
+  const m = { key: { remoteJid: '1001@lid', remoteJidAlt: '972500000001@s.whatsapp.net', fromMe: false, id: 'L1' }, pushName: 'Noam Barak', message: { conversation: 'hi' } };
+  await t.onMessage(m, t.sock);
+  assert.equal(t.contactNames.get('1001@lid'), 'Noam');
+});

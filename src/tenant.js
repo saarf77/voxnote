@@ -527,7 +527,10 @@ Each one is a single word.
     if (n.isGroup) chatName = await this.resolveGroupName(n.chatId);
     else if (this.isSelfChat(n.chatId)) chatName = 'Notes to self';
     else {
-      if (!n.fromMe && n.senderName && !this.savedNames.has(n.chatId)) this.contactNames.set(n.chatId, n.senderName);
+      // The owner's saved name wins over the name people give themselves, under either of their ids.
+      const savedAlt = n.chatAlt && this.savedNames.has(n.chatAlt) ? this.contactNames.get(n.chatAlt) : null;
+      if (savedAlt && this.contactNames.get(n.chatId) !== savedAlt) this.contactNames.set(n.chatId, savedAlt);
+      else if (!savedAlt && !n.fromMe && n.senderName && !this.savedNames.has(n.chatId)) this.contactNames.set(n.chatId, n.senderName);
       if (!n.fromMe && m.verifiedBizName && this.learnName(n.chatId, String(m.verifiedBizName).trim().slice(0, 80))) this.saveMap('contacts.json', this.contactNames, 5000);
       if (n.chatAlt) this.learnAltIds(...(n.chatId.endsWith('@lid') ? [n.chatAlt, n.chatId] : [n.chatId, n.chatAlt]));
       chatName = this.contactNames.get(n.chatId) || n.chatId.split('@')[0];
@@ -1016,20 +1019,22 @@ Each one is a single word.
   async switchOptions(name) {
     const dir = await this.switchDirectory();
     const { candidates } = matchContacts(name, dir, { activity: this.activity, max: 8 });
-    const options = [];
+    // One option per person, across every name they matched under (their saved name and the one they
+    // gave themselves can both match), labelled with the name the owner saved them under when known.
+    const people = [];
+    const savedName = (ids) => ids.map((id) => (this.savedNames.has(id) ? this.contactNames.get(id) : null)).find(Boolean) || null;
     for (const c of candidates) {
       // matchContacts folds everything with the same name into one; unfold it into the chats behind it.
       const same = [...dir].filter(([, v]) => normName(v) === normName(c.name)).map(([jid]) => jid);
-      const people = [];
       for (const jid of same) {
         const ids = await this.chatIdsFor(jid);
         const known = people.find((p) => p.ids.some((id) => ids.includes(id)));
         if (known) { for (const id of ids) if (!known.ids.includes(id)) known.ids.push(id); if (jid.endsWith('@s.whatsapp.net')) known.chatId = jid; }
         else people.push({ chatId: jid, ids, name: String(dir.get(jid)).trim(), isGroup: jid.endsWith('@g.us') });
       }
-      options.push(...people);
     }
-    return options.slice(0, 9);
+    for (const p of people) if (!p.isGroup) p.name = String(savedName(p.ids) || p.name).trim();
+    return people.slice(0, 9);
   }
 
   /**
