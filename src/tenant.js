@@ -306,7 +306,7 @@ Recordings are deleted the moment they become text.
 כל פקודה היא מילה אחת באנגלית.
 
 • הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה, או מספר טלפון (למשל *exclude אמא*), ו-*include* כדי להחזיר. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההקלטות שלך. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
-• תמלול בפרטיות, *private*: לכתוב כאן *private* ואת השם, והטקסט של הקלטות שאחרים שולחים שם יגיע רק לכאן, בלי שום דבר בצ'אט ההוא.
+• תמלול בפרטיות, *private*: לכתוב כאן *private* ואת השם, והטקסט של כל הקלטה שם, גם שלך, יגיע רק לכאן, בלי שום דבר בצ'אט ההוא.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
 • שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
 • עצירה והמשך, *pause* / *resume*: לכתוב כאן כדי לעצור את כל התמלולים, ולהמשיך מתי שרוצים.
@@ -316,7 +316,7 @@ Recordings are deleted the moment they become text.
 Each one is a single word.
 
 • *include* / *exclude*: write it here with a contact's or a group's name, or a phone number (*exclude Mom*), to switch that chat, or reply it to a forwarded recording's text. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included. Groups start off, private chats start on.
-• *private*: write it here with a name, and the text of recordings other people send in that chat comes only here; nothing is posted there.
+• *private*: write it here with a name, and the text of every recording in that chat, yours included, comes only here; nothing is posted there.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
 • *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
 • *pause* / *resume*: write it here to stop all transcription for a while, and to start again.
@@ -567,9 +567,9 @@ Each one is a single word.
     // One recording, one text: the control group is ours alone, everywhere else another
     // account on this server may be looking at the very same message.
     if (inControl) { await this.handleRecording(m, n, chatName, isVideo, inControl); return; }
-    // Private mode: someone else's recording, whose text comes to the control group only. That is the
-    // owner's own copy, not a post in the chat, so it takes no part in deciding who posts there.
-    if (!n.fromMe && this.isQuiet(n)) {
+    // Private mode: every recording in the chat, the owner's own included, has its text come to the control
+    // group only. That is not a post in the chat, so it takes no part in deciding who posts there.
+    if (this.isQuiet(n)) {
       // A copy in the control group would outlive a disappearing recording: none is made.
       if (n.expiration) { console.log(`${this.tag} ⏭️ private transcript skipped (disappearing chat)`); return; }
       await this.handleRecording(m, n, chatName, isVideo, inControl);
@@ -778,7 +778,7 @@ Each one is a single word.
   /** Resolves true once the text is in the chat (another account may be waiting to hear). */
   deliver(n, chatName, text, isVideo, original) {
     if (this.stopped) return false;
-    if (!n.fromMe && this.isQuiet(n)) return this.deliverPrivate(n, chatName, text, isVideo);
+    if (this.isQuiet(n)) return this.deliverPrivate(n, chatName, text, isVideo);
     const body = n.fromMe ? `${SELF_PREFIX}${text}` : `${isVideo ? '🎬' : '🎙️'} *${n.senderName || chatName || 'unknown'}*: ${text}`;
     // In a disappearing chat the text disappears on the same timer as the recording.
     const opts = { quoted: original, ...(n.expiration ? { ephemeralExpiration: n.expiration } : {}) };
@@ -793,8 +793,12 @@ Each one is a single word.
    */
   deliverPrivate(n, chatName, text, isVideo) {
     if (!this.target) return false;
+    const he = this.ownerLocale() === 'he', icon = isVideo ? '🎬' : '🎙️';
     const sender = n.senderName || chatName || 'unknown';
-    const head = `${isVideo ? '🎬' : '🎙️'} *${sender}*${n.isGroup && chatName ? ` ${this.ownerLocale() === 'he' ? 'ב' : 'in '}*${chatName}*` : ''}`;
+    // Theirs: who, and in which group. The owner's own: where it went.
+    const head = n.fromMe
+      ? (he ? `${icon} ההקלטה שלך ${n.isGroup ? 'ב' : 'ל'}*${chatName}*` : `${icon} *You* ${n.isGroup ? 'in' : 'to'} *${chatName}*`)
+      : `${icon} *${sender}*${n.isGroup && chatName ? ` ${he ? 'ב' : 'in '}*${chatName}*` : ''}`;
     return this.sendPaced(this.target.jid, { text: `${head}\n${text}` })
       .then((sent) => {
         if (sent?.key?.id) this.recordFwd(sent.key.id, { chatId: n.chatId, name: chatName || sender });
@@ -1104,8 +1108,8 @@ Each one is a single word.
     const he = this.ownerLocale() === 'he';
     const label = this.switchLabel(chosen);
     const text = action === 'private'
-      ? (he ? `🔒 לתמלל את *${label}* בפרטיות?\nהקלטות שאחרים שולחים שם יתומללו, והטקסט יגיע רק לקבוצה הזו. שום דבר לא ייכתב בצ'אט ההוא. ההודעות הקוליות שלך שם עדיין יקבלו טקסט מתחתיהן.\n\nלענות *yes* כדי לעבור, *no* כדי לבטל.`
-        : `🔒 Transcribe *${label}* privately?\nRecordings people send there will be transcribed, and the text will come only to this group. Nothing is posted in that chat. Your own voice notes there still get their text under them.\n\nReply *yes* to switch, *no* to cancel.`)
+      ? (he ? `🔒 לתמלל את *${label}* בפרטיות?\nכל הקלטה בצ'אט ההוא תתומלל, גם שלך, והטקסט יגיע רק לקבוצה הזו. שום דבר לא ייכתב בצ'אט ההוא.\n\nלענות *yes* כדי לעבור, *no* כדי לבטל.`
+        : `🔒 Transcribe *${label}* privately?\nEvery recording there will be transcribed, yours included, and the text will come only to this group. Nothing is posted in that chat.\n\nReply *yes* to switch, *no* to cancel.`)
       : action === 'exclude'
       ? (he ? `🔇 להחריג את *${label}*?\nשום הקלטה בצ'אט הזה לא תתומלל, גם לא ההקלטות שלך.\n\nלענות *yes* כדי להחריג, *no* כדי לבטל.`
         : `🔇 Exclude *${label}*?\nNo recording in this chat will be transcribed, your own voice notes included.\n\nReply *yes* to exclude, *no* to cancel.`)

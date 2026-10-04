@@ -42,7 +42,7 @@ const exclusive = (t, ids) => { for (const id of ids) assert.ok([t.muted.has(id)
 test('private <name> asks first, then moves the chat to private mode', async () => {
   const t = tenant();
   assert.equal(await say(t, 'private Ron'), true);
-  assert.match(t.out[0].text, /Transcribe \*Ron Levi \(…444\)\* privately\?/); assert.match(t.out[0].text, /Your own voice notes there still get their text/);
+  assert.match(t.out[0].text, /Transcribe \*Ron Levi \(…444\)\* privately\?/); assert.match(t.out[0].text, /yours included/);
   assert.equal(t.quiet.size, 0, 'asking changes nothing');
   assert.equal(await say(t, 'yes'), true);
   assert.ok(t.quiet.has(RON)); assert.equal(t.chatMode(RON), 'private');
@@ -58,7 +58,7 @@ test('switching between the three modes keeps one mode per chat, for a group and
   }
 });
 
-test('in private mode their recording comes to the control group only; my own still posts in the chat', async () => {
+test('in private mode every recording, mine included, comes to the control group only', async () => {
   const t = tenant();
   await t.applySwitch({ chatId: RON, ids: [RON], name: 'Ron Levi', isGroup: false }, 'private');
   t.out.length = 0;
@@ -69,7 +69,8 @@ test('in private mode their recording comes to the control group only; my own st
   assert.deepEqual(t.fwdMap.get(`S${seq}`), { chatId: RON, name: 'Ron' }, 'the private copy can be replied to, to switch the chat');
   t.out.length = 0;
   await t.onMessage(recording(RON, { fromMe: true }), t.sock);
-  assert.equal(t.out.length, 1); assert.equal(t.out[0].jid, RON); assert.equal(t.out[0].quoted, true);
+  assert.equal(t.out.length, 1); assert.equal(t.out[0].jid, CONTROL, 'my own note stays out of the chat too');
+  assert.match(t.out[0].text, /^🎙️ \*You\* to \*Ron\*\n/);
 });
 
 test('a group in private mode: the copy names the sender and the group', async () => {
@@ -135,3 +136,15 @@ test('the Hebrew texts open every line with a Hebrew letter; help and the status
   assert.match(t.out.at(-1).text, /מתומללים בפרטיות: Ron Levi/);
   assert.match(t.helpText(), /\*private\*/);
 });
+
+test('my own note in a group in private mode: the copy says where it went; in Hebrew too', async () => {
+  const t = tenant(); t.groupNames.set(CLUB, 'Book club');
+  await t.applySwitch({ chatId: CLUB, ids: [CLUB], name: 'Book club', isGroup: true }, 'private');
+  t.out.length = 0;
+  await t.onMessage(recording(CLUB, { fromMe: true }), t.sock);
+  assert.equal(t.out.length, 1); assert.equal(t.out[0].jid, CONTROL); assert.match(t.out[0].text, /^🎙️ \*You\* in \*Book club\*\n/);
+  t.locale = 'he'; t.out.length = 0;
+  await t.onMessage(recording(CLUB, { fromMe: true }), t.sock);
+  assert.match(t.out[0].text, /^🎙️ ההקלטה שלך ב\*Book club\*\n/);
+});
+
