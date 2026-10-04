@@ -97,7 +97,7 @@ function wire(t) {
 export function create({ language = '', locale = '', label = '', plan = undefined, referredBy = '', signup = null, start = true } = {}) {
   if (tenants.size >= MAX_TENANTS) throw new Error('This server is full right now. Please try again later.');
   if (pendingCount() >= MAX_PENDING) throw new Error('Too many sign-ups are waiting to be linked right now. Please try again in a few minutes.');
-  const rec = { id: newId(), label: String(label).slice(0, 60), language: String(language).slice(0, 5), ...(locale === 'he' || locale === 'en' ? { locale } : {}), createdAt: Date.now(), manageKey: newId(), inviteCode: newInviteCode(), ...(byInvite(referredBy) ? { referredBy } : {}), ...(plan ? { plan } : {}) };
+  const rec = { id: newId(), label: String(label).slice(0, 60), language: String(language).slice(0, 5), ...(locale === 'he' || locale === 'en' ? { locale } : {}), createdAt: Date.now(), groups: 'off', manageKey: newId(), inviteCode: newInviteCode(), ...(byInvite(referredBy) ? { referredBy } : {}), ...(plan ? { plan } : {}) };
   const dir = join(tenantsDir, rec.id);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(dir, 'tenant.json'), JSON.stringify(rec, null, 2), { mode: 0o600 });

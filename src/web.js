@@ -531,7 +531,7 @@ ${FOOT}`, { wide: true, nav: NAV, poll: LANDING_JS }));
 </ol></div></section>
 <section class="band"><div class="wrap"><h2>Then it runs itself.</h2>
 <div class="facts plain">
-<p><b>Your voice notes.</b> Every one you send, in any chat, gets its text right under it.</p>
+<p><b>Your voice notes.</b> Every one you send in a private chat gets its text right under it. In groups, only where you say so.</p>
 <p><b>Private chats.</b> Voice notes and videos people send you get their text too.</p>
 <p><b>Clean text.</b> Every word they said, with the ums gone and the misheard words fixed. Long ones get a line on top saying what it&#39;s about.</p>
 <p><b>Hands off.</b> View-once media is never touched. In disappearing chats, the text disappears with the recording.</p>
@@ -540,7 +540,7 @@ ${DAILY_MINUTES_CAP ? `<p><b>A daily limit.</b> ${DAILY_MINUTES_CAP} minutes of 
 </div></div></section>
 <section class="band"><div class="wrap"><h2>When you want more.</h2><p class="intro">You run ${NAME} by talking to it, in WhatsApp.</p>
 <div class="asks">
-<div class="ask"><div><h3>Turn on a group.</h3><p>Groups are off until you say so. Forward one voice note from the group into your ${NAME} group and reply on. Nothing is ever posted in the group itself.</p></div>
+<div class="ask"><div><h3>Turn on a group.</h3><p>Groups are off until you say so, your own voice notes included. Write include and the group&#39;s name in your ${NAME} group, or forward one voice note from it and reply include. Or write groups mine to transcribe just your own voice notes, in every group. Nothing is ever posted in a group to control it.</p></div>
 ${mini(`${NAME} group`, `${voice('0:32', true)}<div class="bot"><b>Family</b> is not transcribed. Reply <b>include</b> to start.</div><div class="me">${quote(NAME, 'Family is not transcribed. Reply include to start.')}include</div><div class="bot">Transcribe <b>Family (group)</b>? Reply <b>yes</b> to include it.</div>`)}</div>
 <div class="ask"><div><h3>Take a text back.</h3><p>Reply delete to any text ${NAME} posted, in any chat. It&#39;s removed for everyone.</p></div>
 ${mini('Any chat', `<div class="me">I&#39;m stuck in traffic, I&#39;ll be there in about twenty minutes. Start without me.</div><div class="me">${quote('You', 'I&#39;m stuck in traffic, I&#39;ll be there in about twenty minutes.')}delete</div>`)}</div>

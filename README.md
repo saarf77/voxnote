@@ -9,11 +9,12 @@ notes and videos into readable text — not a word-for-word transcript, a clear
 rewrite of what was said, with a one-line summary for long notes — posted back
 into WhatsApp as you.
 
-- **Your own voice notes**, in any chat, get their text under them, so the other
-  side can read them.
-- **Private chats**: voice notes and videos people send you get their text under them.
-- **Groups** are off until you switch one on, from a private control group only
-  you are in. Nothing is ever posted in a chat to control it.
+- **Private chats**: every voice note, yours and theirs, gets its text under it, so
+  both sides can read it.
+- **Groups** are off, your own voice notes included, until you switch one on from a
+  private control group only you are in (`include`, or `private` to get the text only
+  there), or write `groups mine` to transcribe just your own voice notes in every
+  group. Nothing is ever posted in a chat to control it.
 - Recordings are deleted the moment they're transcribed. Nothing is stored.
 
 ## Using the hosted service
@@ -35,6 +36,7 @@ message explains everything:
 | Write `leave` in the *Ramble* group, then `yes` | unlinks the device and erases your account |
 | Write `help` in the *Ramble* group | the list of commands |
 | Write `pause` / `resume` in the *Ramble* group | stops all transcription for a while / starts it again |
+| Write `groups`, `groups off` or `groups mine` in the *Ramble* group | shows / sets what happens in groups you haven't switched: nothing (new accounts), or your own voice notes get their text |
 | Write `language` in the *Ramble* group; `language hebrew` (or `auto`) | shows / pins the transcription language |
 | In *Notes to self*: `names: David, Eden` | teaches the spelling of names (`names` lists, `names -X` removes) |
 | Record a voice note *in* the *Ramble* group: "send Eden that I'm on my way" | finds Eden in your contacts and shows who and what; reply `yes` (or a number, if several match) and it texts her, as you. Nothing is sent without your yes. Reply `undo` to a sent one to delete it |
@@ -44,7 +46,7 @@ one text: the sender's account posts it, and the recipient's steps in only if th
 sender's cannot (chat off, daily limit, a failure).
 
 Every command is one English word (`on`, `off`, `delete`, `yes`, `no`, `undo`,
-`leave`, `help`, `language`, `pause`, `resume`, `include`, `exclude`, `private`, `names`): no synonyms and no translations, so it is never a question
+`leave`, `help`, `language`, `pause`, `resume`, `include`, `exclude`, `private`, `groups`, `names`): no synonyms and no translations, so it is never a question
 which to write. A *spoken* answer to a question may be a Hebrew yes/no or a number word.
 
 To stop using it, write `leave` in the *Ramble* group and confirm with `yes`: the
