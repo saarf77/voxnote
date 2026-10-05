@@ -62,7 +62,7 @@ const mark = `<a class="mark" href="/">${LOGO_SVG}<span>${esc(PRODUCT_NAME)}</sp
 const WAVE_SVG = `<svg class="wave" width="130" height="22" viewBox="0 0 130 22" aria-hidden="true">${[6, 10, 16, 8, 20, 12, 7, 14, 18, 9, 5, 13, 17, 11, 6, 15, 19, 8, 12, 7, 16, 10, 5, 9, 14, 6].map((h, i) => `<rect x="${i * 5}" y="${(22 - h) / 2}" width="3" height="${h}" rx="1.5" fill="currentColor"/>`).join('')}</svg>`;
 const DEMO = `<div class="chat" role="img" aria-label="A WhatsApp voice note with its text posted right under it">
 <div class="b in"><span class="av">D</span><svg class="play" width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.2v13.6L13 8z" fill="currentColor"/></svg>${WAVE_SVG}<span class="dur">1:47</span></div>
-<div class="b out"><span class="quo">Voice message · 1:47</span><b>Dana is running twenty minutes late and wants her usual, with a large lemonade.</b><p>I'm stuck in traffic, I'll be there in about twenty minutes. Start without me and order me the same as last time, and if they have the lemonade get me a big one.</p><span class="t">9:41</span></div>
+<div class="b out"><span class="quo">Voice message · 1:47</span><p>I'm stuck in traffic, I'll be there in about twenty minutes. Start without me and order me the same as last time, and if they have the lemonade get me a big one.</p><span class="t">9:41</span></div>
 </div>`;
 // The three typefaces are served from here: the CSP allows no third-party origin.
 const FONT_DIR = fileURLToPath(new URL('./fonts/', import.meta.url));
@@ -116,6 +116,7 @@ main.narrow{padding-bottom:40px}main.narrow>p{margin:12px 0;color:var(--mute)}ma
 .cta{display:inline-flex;align-items:center;justify-content:center;width:100%;height:60px;padding:0 34px;border:0;border-radius:999px;background:var(--green);color:var(--ink);font:inherit;font-size:18px;font-weight:600;text-decoration:none;cursor:pointer}
 .cta:active{transform:translateY(1px)}
 .fine{color:var(--mute);font-size:14px}
+.safe{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:15px;line-height:1.35;text-wrap:balance}.safe svg{flex:none;color:var(--mute)}
 .invited{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;background:var(--ink);color:#fff;font-size:13px;font-weight:600}
 label{display:block;font-size:15px;color:var(--mute);margin:0 0 8px}
 select,input[type=text]{width:100%;height:52px;font:inherit;font-size:16px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);appearance:none}
@@ -486,6 +487,7 @@ ${invitedBy ? '<span class="invited">A friend invited you.</span>' : ''}
 ${INVITE_CODE ? '<div><label for="invite">Invite code</label><input type="text" id="invite" name="invite" autocomplete="off" required></div>' : ''}
 <input type="hidden" name="consent" value="1"><input type="hidden" name="tz"><input type="hidden" name="from">${invitedBy ? `<input type="hidden" name="ref" value="${esc(invitedBy)}">` : ''}
 <button type="submit" class="cta">Link my WhatsApp</button>
+<p class="safe"><svg width="15" height="17" viewBox="0 0 15 17" aria-hidden="true"><rect x="1.5" y="7.5" width="12" height="8.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V5a3 3 0 0 1 6 0v2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>Recordings and their text aren&#39;t stored. They pass through, straight to your WhatsApp.</p>
 <p class="fine">By continuing you agree to the <a href="/privacy">privacy &amp; terms</a>.</p>
 </form>
 ${DEMO}
@@ -497,7 +499,7 @@ ${DEMO}
 </div>
 <div class="facts"><p><b>Any language.</b> It works out which one on its own.</p><p><b>Nothing kept.</b> A recording is deleted the moment it becomes text.</p></div>
 </div></section>
-<section class="band"><div class="wrap"><ol class="steps"><li>Scan a QR code.</li><li>Send a voice note.</li><li>The text shows up under it.</li></ol></div></section>
+<section class="band"><div class="wrap"><ol class="steps"><li>Link your WhatsApp.</li><li>Send a voice note.</li><li>The text shows up under it.</li></ol></div></section>
 <section class="band"><div class="wrap oss">
 <div><h2>Open source.</h2><p>Read every line, or run it on your own server.</p></div>
 <a class="gh" href="${esc(REPO_URL)}"><span>${CODE_SVG}View on GitHub</span>${stars == null ? '' : `<span>${STAR_SVG}${compact(stars)}</span>`}</a>
@@ -525,23 +527,27 @@ ${FOOT}`, { wide: true, nav: NAV, poll: LANDING_JS }));
   app.get('/how', (req, res) => track(req, res) ?? res.type('html').send(page(res, `${PRODUCT_NAME} · How it works`, `
 <section class="howhero wrap"><h1>How it works.</h1><p class="sub">Set it up once. After that, everything happens inside WhatsApp.</p></section>
 <section class="band"><div class="wrap"><ol class="steps long">
-<li><div>Scan a QR code.<span>In WhatsApp: Settings, Linked devices, Link a device. Same as WhatsApp Web. On your phone, a code you type in instead.</span></div></li>
-<li><div>Send a voice note.<span>The text shows up under it. That&#39;s the whole setup.</span></div></li>
+<li><div>Link your WhatsApp.<span>Scan a QR code, or on your phone type in a code. In WhatsApp: Settings, Linked devices, Link a device. Same as WhatsApp Web.</span></div></li>
 <li><div>Get your ${NAME} group.<span>A new group with only you in it. It&#39;s your control panel.</span></div></li>
+<li><div>Record a voice note there.<span>Its text shows up right under it. That&#39;s the whole setup.</span></div></li>
 </ol></div></section>
 <section class="band"><div class="wrap"><h2>Then it runs itself.</h2>
 <div class="facts plain">
 <p><b>Your voice notes.</b> Every one you send in a private chat gets its text right under it. In groups, only where you say so.</p>
 <p><b>Private chats.</b> Voice notes and videos people send you get their text too.</p>
-<p><b>Clean text.</b> Every word they said, with the ums gone and the misheard words fixed. Long ones get a line on top saying what it&#39;s about.</p>
+<p><b>Clean text.</b> Every word they said, with the ums gone and the misheard words fixed.</p>
 <p><b>Hands off.</b> View-once media is never touched. In disappearing chats, the text disappears with the recording.</p>
 <p><b>Any language.</b> It works out which one on its own.</p>
 ${DAILY_MINUTES_CAP ? `<p><b>A daily limit.</b> ${DAILY_MINUTES_CAP} minutes of audio a day.</p>` : ''}
 </div></div></section>
-<section class="band"><div class="wrap"><h2>When you want more.</h2><p class="intro">You run ${NAME} by talking to it, in WhatsApp.</p>
+<section class="band"><div class="wrap"><h2>When you want more.</h2><p class="intro">You run ${NAME} by talking to it, in WhatsApp. Write help in your ${NAME} group for the full list.</p>
 <div class="asks">
 <div class="ask"><div><h3>Turn on a group.</h3><p>Groups are off until you say so, your own voice notes included. Write include and the group&#39;s name in your ${NAME} group, or forward one voice note from it and reply include. Or write groups mine to transcribe just your own voice notes, in every group. Nothing is ever posted in a group to control it.</p></div>
 ${mini(`${NAME} group`, `${voice('0:32', true)}<div class="bot"><b>Family</b> is not transcribed. Reply <b>include</b> to start.</div><div class="me">${quote(NAME, 'Family is not transcribed. Reply include to start.')}include</div><div class="bot">Transcribe <b>Family (group)</b>? Reply <b>yes</b> to include it.</div>`)}</div>
+<div class="ask"><div><h3>Keep it private.</h3><p>Write private and a chat&#39;s name. Every recording in it, yours included, is transcribed into your ${NAME} group only. Nothing is posted in the chat.</p></div>
+${mini(`${NAME} group`, `<div class="me">private Book club</div><div class="bot">Transcribe <b>Book club (group)</b> privately? Reply <b>yes</b> to switch.</div><div class="me">yes</div><div class="bot"><b>Dana</b> in <b>Book club</b><br>I&#39;ll be there in twenty minutes, start without me.</div>`)}</div>
+<div class="ask"><div><h3>Take a break.</h3><p>Write pause in your ${NAME} group, and nothing is transcribed anywhere until you write resume.</p></div>
+${mini(`${NAME} group`, `<div class="me">pause</div><div class="bot">Paused. Nothing is transcribed until you write <b>resume</b> here.</div>`)}</div>
 <div class="ask"><div><h3>Take a text back.</h3><p>Reply delete to any text ${NAME} posted, in any chat. It&#39;s removed for everyone.</p></div>
 ${mini('Any chat', `<div class="me">I&#39;m stuck in traffic, I&#39;ll be there in about twenty minutes. Start without me.</div><div class="me">${quote('You', 'I&#39;m stuck in traffic, I&#39;ll be there in about twenty minutes.')}delete</div>`)}</div>
 <div class="ask"><div><h3>Leave.</h3><p>Write leave in your ${NAME} group. It asks first. Say yes, and it logs the device out of your WhatsApp and erases everything about you here.</p></div>
@@ -559,8 +565,8 @@ ${FOOT}`, { wide: true, nav: NAV })));
 <h1 class="small">Privacy &amp; terms</h1>
 <div class="legal">
 <section><h3>What ${esc(PRODUCT_NAME)} does</h3>
-<p>${esc(PRODUCT_NAME)} is a transcription service: it turns recordings into readable text. In the chats you allow, it sends voice notes and videos to speech and language models, rewrites what was said into clear text, and adds a one-line summary to long ones. View-once media is never touched. In disappearing chats, the text disappears on the same timer as the recording.</p>
-<p>WhatsApp is only the channel. ${esc(PRODUCT_NAME)} links to your account as a device, like WhatsApp Web, to receive the recordings and post the text back under them, as you. It adds nothing to WhatsApp, offers no WhatsApp feature, and is not affiliated with, endorsed by or connected to WhatsApp or Meta. Your WhatsApp account stays yours, under WhatsApp&#39;s own terms.</p></section>
+<p>${esc(PRODUCT_NAME)} is a transcription service: it turns recordings into readable text. In the chats you allow, it sends voice notes and videos to speech and language models, and cleans up what was said into clear text. View-once media is never touched. In disappearing chats, the text disappears on the same timer as the recording.</p>
+<p>WhatsApp is only the channel. ${esc(PRODUCT_NAME)} links to your account as a device, like WhatsApp Web, to receive the recordings and post the text back under them, as you, or, for a chat you make private, only into your own private group. It adds nothing to WhatsApp, offers no WhatsApp feature, and is not affiliated with, endorsed by or connected to WhatsApp or Meta. Your WhatsApp account stays yours, under WhatsApp&#39;s own terms.</p></section>
 <section><h3>What you pay for</h3>
 <p>Any paid plan pays for the transcription: the minutes of audio turned into text, and the model doing it. It is never a charge for WhatsApp, for access to WhatsApp, or for any WhatsApp feature. Those are free from WhatsApp, and ${esc(PRODUCT_NAME)} does not sell or resell them. A recording that cannot be transcribed is not counted.</p></section>
 <section><h3>What we keep</h3>
