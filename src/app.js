@@ -7,7 +7,7 @@ import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dataDir, dataDirIsMount } from './paths.js';
-import { noteError } from './health.js';
+import { noteError, memoryLine } from './health.js';
 import * as registry from './registry.js';
 import { createWebApp } from './web.js';
 import { PRODUCT_NAME, DEFAULT_PLAN, DAILY_MINUTES_CAP, MAX_TRANSCRIBE_SECONDS } from './tenant.js';
@@ -49,5 +49,7 @@ registry.migrateLegacy();
 const tenants = registry.loadAll();
 console.log(`👥 ${tenants.length} linked account(s) (capacity ${registry.MAX_TENANTS})`);
 registry.startAll();
+// What the process holds, into the log every ten minutes, so a climb can be read after the fact.
+setInterval(() => { const ts = registry.list(); console.log(memoryLine({ total: ts.length, connected: ts.filter((t) => t.ready).length })); }, 10 * 60e3).unref?.();
 
 createWebApp().listen(PORT, HOST, () => console.log(`🌐 Site: http://${HOST === '0.0.0.0' ? '<your-host>' : 'localhost'}:${PORT}  (admin at /admin${process.env.ADMIN_PASSWORD || process.env.DASHBOARD_PASSWORD ? '' : ' — disabled, set ADMIN_PASSWORD'})`));

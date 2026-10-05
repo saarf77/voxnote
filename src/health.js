@@ -43,4 +43,15 @@ export function snapshot() {
     disk: diskUsage(), diskFailures: { ...disk }, turnedAway: { ...turnedAway },
   };
 }
+/**
+ * One line for the log, every few minutes: what kind of memory is in use and how many timers and
+ * sockets the process holds. A leak shows in which of these keeps climbing while accounts do not.
+ */
+export function memoryLine(accounts = null) {
+  const mem = process.memoryUsage(), gb = (n) => (n / 1e9).toFixed(2);
+  const held = {};
+  try { for (const kind of process.getActiveResourcesInfo()) held[kind] = (held[kind] || 0) + 1; } catch { /* older Node */ }
+  const top = Object.entries(held).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ${n}`).join(', ');
+  return `🧠 memory ${gb(mem.rss)} GB (heap ${gb(mem.heapUsed)} of ${gb(mem.heapTotal)}, buffers ${gb(mem.external + mem.arrayBuffers)})${accounts ? ` · ${accounts.total} accounts, ${accounts.connected} connected` : ''} · up ${Math.round((Date.now() - startedAt) / 60e3)}m · holding: ${top || 'n/a'}`;
+}
 export const _reset = () => { Object.assign(disk, { failures: 0, lastCode: null, lastAt: null }); Object.assign(turnedAway, { full: 0, waiting: 0, rate: 0, lastAt: null }); }; // tests
