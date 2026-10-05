@@ -325,6 +325,7 @@ const ADMIN_CSS = `
 .funnel{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;margin-bottom:28px}
 .fttl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:6px}.fttl h2,.sect{font-size:28px}.fttl nav{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;align-items:center;text-decoration:none}
+.sorts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}.sorts .muted{margin-right:4px}
 .sect{margin:0 0 14px}
 .fsteps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin:16px 0}
 .fhead{display:flex;align-items:baseline;gap:8px}.fhead b{font-family:var(--disp);font-size:40px;letter-spacing:-.03em;line-height:1}.fhead span{font-size:15px}
@@ -457,10 +458,10 @@ function funnel(days, tenants) {
 }
 const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
 const bar = (n, max) => `<svg class="fbar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="10" rx="2" class="bg"/><rect width="${max ? Math.max(n ? 1 : 0, (n / max) * 100).toFixed(1) : 0}" height="10" rx="2"/></svg>`;
-function funnelPanel(f, days) {
+function funnelPanel(f, days, sort = 'recent') {
   const step = (label, n, note) => `<div class="fstep"><div class="fhead"><b>${n}</b><span>${label}</span></div>${bar(n, f.came)}<small>${note}</small></div>`;
   const rows = (title, list) => list.length ? `<div class="fbreak"><h4>${title}</h4><div class="frow fh"><span></span><span>came</span><span>clicked</span><span>linked</span><span>overall</span></div>${list.map(([k, x]) => `<div class="frow"><span>${esc(k)}</span><span>${x.came}</span><span>${x.clicked}</span><span>${x.linked}</span><span>${pct(x.linked, x.came)}</span></div>`).join('')}</div>` : '';
-  return `<section class="funnel"><div class="fttl"><h2>Funnel</h2><nav>${FUNNEL_PERIODS.map(([d, l]) => `<a class="chip" aria-pressed="${d === days}" href="/admin?days=${d}">${l}</a>`).join('')}</nav></div>
+  return `<section class="funnel"><div class="fttl"><h2>Funnel</h2><nav>${FUNNEL_PERIODS.map(([d, l]) => `<a class="chip" aria-pressed="${d === days}" href="/admin?days=${d}&sort=${sort}">${l}</a>`).join('')}</nav></div>
 <p class="muted">People who first came ${days ? `in the ${days === 1 ? 'last 24 hours' : `last ${days} days`}` : 'ever'}, one per browser. Crawlers, link previews and your own browser are left out.${f.since ? ` Counting since ${new Date(f.since).toISOString().slice(0, 10)}.` : ' Counting starts with the next visit.'}</p>
 <div class="fsteps">
 ${step('came to the site', f.came, 'one per browser')}
@@ -470,7 +471,19 @@ ${step('linked WhatsApp', f.linked, `${pct(f.linked, f.clicked)} of those who cl
 <div class="fbreaks">${rows('By source', f.bySource)}${rows('By device', f.byDevice)}</div>
 </section>`;
 }
-function adminPage(o, nonce, days = 30) {
+// The account list's order: recent activity (the default), or minutes transcribed today, in the
+// last 7 days (today included), or all time: the heavy users first.
+const ACCOUNT_SORTS = [['recent', 'Recent'], ['today', 'Today'], ['week', '7 days'], ['total', 'All time']];
+function minutesFor(t, sort, rate) {
+  if (sort === 'today') return t.minutesToday || 0;
+  if (sort === 'week') {
+    const days = new Set(Array.from({ length: 6 }, (_, i) => new Date(Date.now() - (i + 1) * 864e5).toISOString().slice(0, 10)));
+    return (t.minutesToday || 0) + (t.usageHistory || []).filter((h) => days.has(h.day)).reduce((a, h) => a + h.minutes, 0);
+  }
+  const $ = spend(t, rate);
+  return $.meteredMin + $.earlierMin;
+}
+function adminPage(o, nonce, days = 30, sort = 'recent') {
   const byCode = new Map(o.tenants.map((t) => [t.inviteCode, t]));
   const byId = new Map(o.tenants.map((t) => [t.id, t]));
   const rank = (t) => (t.ready ? 0 : t.linkedAt ? 1 : 2);
@@ -479,6 +492,11 @@ function adminPage(o, nonce, days = 30) {
   // The server's measured dollars per minute, once there is enough to measure; it prices the minutes from before the meter.
   const measured = ts.reduce((a, t) => [a[0] + (t.totals?.usd || 0), a[1] + ((t.totals?.ownSeconds || 0) + (t.totals?.othersSeconds || 0)) / 60], [0, 0]);
   const rate = measured[1] >= 5 ? measured[0] / measured[1] : 0;
+  if (sort !== 'recent') {
+    // Heaviest first; accounts that never linked stay at the end.
+    const m = new Map(ts.map((t) => [t.id, minutesFor(t, sort, rate)]));
+    ts.sort((a, b) => (!a.linkedAt) - (!b.linkedAt) || m.get(b.id) - m.get(a.id));
+  }
   const all = ts.map((t) => spend(t, rate));
   const allMin = all.reduce((a, x) => a + x.meteredMin + x.earlierMin, 0), allUsd = all.reduce((a, x) => a + x.usd + x.earlierUsd, 0);
   const h = o.health, d = h.disk, away = h.turnedAway.full + h.turnedAway.waiting + h.turnedAway.rate;
@@ -507,9 +525,10 @@ ${tile('Turned away', away ? `<span class="danger">${away}</span>` : 0, away ? `
 ${tile('Memory', h.memoryMb >= 1000 ? `${(h.memoryMb / 1000).toFixed(1)} GB` : `${h.memoryMb} MB`, `heap ${count(h.memory.heapUsedMb)} · buffers ${count(h.memory.buffersMb)} MB`)}
 ${tile('Up', h.uptimeMinutes < 120 ? `${h.uptimeMinutes}m` : `${Math.round(h.uptimeMinutes / 60)}h`, 'since restart')}
 </div>
-${funnelPanel(funnel(days, o.tenants), days)}
+${funnelPanel(funnel(days, o.tenants), days, sort)}
 <h2 class="sect">Accounts</h2>
-<div class="adbar"><input type="text" id="q" placeholder="Search name, number, id, group" autocomplete="off">
+<nav class="sorts"><span class="muted">Sort by minutes</span>${ACCOUNT_SORTS.map(([k, l]) => `<a class="chip" aria-pressed="${k === sort}" href="/admin?days=${days}&sort=${k}#accounts">${l}</a>`).join('')}</nav>
+<div class="adbar" id="accounts"><input type="text" id="q" placeholder="Search name, number, id, group" autocomplete="off">
 <button class="chip" data-f="all" aria-pressed="true">All</button><button class="chip" data-f="ok" aria-pressed="false">Connected</button><button class="chip" data-f="bad" aria-pressed="false">Need attention</button><button class="chip" data-f="wait" aria-pressed="false">Waiting</button></div>
 ${cards(ts, byCode, rate, byId)}
 <p class="empty" id="none"${ts.length ? ' hidden' : ''}>${ts.length ? 'No account matches.' : 'No accounts yet.'}</p>
@@ -891,6 +910,7 @@ tick();` }));
 
   // ---------- admin (health only; support endpoints below) ----------
   function adminAuth(req, res, next) {
+    res.locals.lang = 'en'; // the admin pages are English and left to right, whatever the site language
     if (!ADMIN_PASSWORD) return res.status(404).end();
     if (adminFailLimiter.blocked(req.ip)) return res.status(429).type('text').send('Too many failed attempts. Try again later.');
     const [scheme, b64] = (req.headers.authorization || '').split(' ');
@@ -1014,7 +1034,7 @@ tick();` }));
     res.json({ id: t.id, label: t.label, link: `${req.protocol}://${req.get('host')}/link/${t.id}?k=${t.manageKey}` });
   });
   app.get('/admin', adminAuth, (req, res) => {
-    res.type('html').send(page(res, `${PRODUCT_NAME} · admin`, adminPage(overview(), res.locals.nonce, FUNNEL_PERIODS.some(([d]) => String(d) === req.query.days) ? Number(req.query.days) : 30), { wide: true, nav: '<a class="navlink" href="/admin.json">JSON</a>', poll: ADMIN_JS }));
+    res.type('html').send(page(res, `${PRODUCT_NAME} · admin`, adminPage(overview(), res.locals.nonce, FUNNEL_PERIODS.some(([d]) => String(d) === req.query.days) ? Number(req.query.days) : 30, ACCOUNT_SORTS.some(([k]) => k === req.query.sort) ? req.query.sort : 'recent'), { wide: true, nav: '<a class="navlink" href="/admin.json">JSON</a>', poll: ADMIN_JS }));
   });
 
   // Liveness only. Counts and details are behind the admin password.

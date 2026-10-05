@@ -1,0 +1,56 @@
+// node --test test/admin-sort.test.mjs — the admin list sorted by minutes: today, 7 days, all time.
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-admin-sort-'));
+process.env.ADMIN_PASSWORD = 'test-admin-pw';
+process.env.TRUST_PROXY = '0';
+const registry = await import('../src/registry.js');
+const { createWebApp } = await import('../src/web.js');
+const server = createWebApp().listen(0, '127.0.0.1');
+await new Promise((r) => server.once('listening', r));
+const base = `http://127.0.0.1:${server.address().port}`;
+after(() => server.close());
+
+const day = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+// Three invented accounts: busy today, busy this week, busy long ago.
+function account(today, history, totalMinutes) {
+  const t = registry.create({ start: false });
+  t.linkedAt = Date.now() - 40 * 864e5; t.ready = true; t.mode = 'connected';
+  t.usage = { day: day(0), seconds: today * 60, notified: false };
+  t.usageHistory = history.map(([d, m]) => ({ day: day(d), minutes: m }));
+  t.totals = { own: 1, others: 0, ownSeconds: totalMinutes * 60, othersSeconds: 0, since: Date.now() - 40 * 864e5 };
+  return t;
+}
+const todayHeavy = account(25, [[1, 1]], 30), weekHeavy = account(2, [[1, 40], [3, 40]], 90), oldHeavy = account(0, [[20, 60]], 500);
+const pending = registry.create({ start: false });
+const order = async (sort) => {
+  const html = await (await fetch(`${base}/admin${sort ? `?sort=${sort}` : ''}`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).text();
+  return [...html.matchAll(/id="a-([0-9a-f]+)"/g)].map((m) => m[1]);
+};
+
+test('sorted by minutes today, in the last 7 days, and all time: heaviest first, never-linked last', async () => {
+  for (const [sort, first] of [['today', todayHeavy], ['week', weekHeavy], ['total', oldHeavy]]) {
+    const ids = await order(sort);
+    assert.equal(ids[0], first.id, sort);
+    assert.equal(ids.at(-1), pending.id, `${sort}: a sign-up that never linked stays at the end`);
+  }
+  const week = await order('week');
+  assert.ok(week.indexOf(todayHeavy.id) < week.indexOf(oldHeavy.id), '27 minutes this week outrank none');
+});
+
+test('the sort buttons keep the funnel period, and an unknown sort is the usual order', async () => {
+  const html = await (await fetch(`${base}/admin?days=7&sort=week`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).text();
+  assert.match(html, /aria-pressed="true" href="\/admin\?days=7&sort=week#accounts">7 days/);
+  assert.match(html, /href="\/admin\?days=1&sort=week"/, 'the funnel periods keep the sort');
+  assert.deepEqual(await order('nonsense'), await order(''));
+});
+
+test('the admin page stays English and left to right for a browser on the Hebrew site', async () => {
+  const html = await (await fetch(`${base}/admin`, { headers: { cookie: 'lang=he', 'accept-language': 'he-IL', authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).text();
+  assert.match(html, /<html lang="en" dir="ltr">/);
+});
+
