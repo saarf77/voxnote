@@ -5,9 +5,18 @@
  * started: writes the disk refused, sign-ups that were turned away. Counts only, in memory.
  */
 import { statfsSync } from 'node:fs';
+import v8 from 'node:v8';
 import { dataDir } from './paths.js';
 
 const startedAt = Date.now();
+// Things that happen, counted since the start: a leak tends to follow one of them.
+const counts = {};
+export const bump = (name, by = 1) => { counts[name] = (counts[name] || 0) + (Number(by) || 0); };
+// Kinds of object worth counting when memory climbs; filled in by whoever knows the classes (see app.js).
+const census = new Map();
+export const watchObjects = (name, ctor) => { if (typeof ctor === 'function') census.set(name, ctor); };
+// Counting walks the whole heap, so it is only done while the heap is small enough for that to be quick.
+const CENSUS_MAX_HEAP = 4e9;
 const DISK_CODES = new Set(['ENOSPC', 'EDQUOT', 'EROFS', 'EIO', 'EMFILE', 'ENFILE']);
 const disk = { failures: 0, lastCode: null, lastAt: null };
 const turnedAway = { full: 0, waiting: 0, rate: 0, lastAt: null };
@@ -52,6 +61,11 @@ export function memoryLine(accounts = null) {
   const held = {};
   try { for (const kind of process.getActiveResourcesInfo()) held[kind] = (held[kind] || 0) + 1; } catch { /* older Node */ }
   const top = Object.entries(held).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ${n}`).join(', ');
-  return `🧠 memory ${gb(mem.rss)} GB (heap ${gb(mem.heapUsed)} of ${gb(mem.heapTotal)}, buffers ${gb(mem.external + mem.arrayBuffers)})${accounts ? ` · ${accounts.total} accounts, ${accounts.connected} connected` : ''} · up ${Math.round((Date.now() - startedAt) / 60e3)}m · holding: ${top || 'n/a'}`;
+  let alive = '';
+  if (census.size && typeof v8.queryObjects === 'function' && mem.heapUsed < CENSUS_MAX_HEAP) {
+    try { alive = ` · alive: ${[...census].map(([name, ctor]) => `${name} ${v8.queryObjects(ctor, { format: 'count' })}`).join(', ')}`; } catch { /* not on this Node */ }
+  }
+  const since = Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(', ');
+  return `🧠 memory ${gb(mem.rss)} GB (heap ${gb(mem.heapUsed)} of ${gb(mem.heapTotal)}, buffers ${gb(mem.external + mem.arrayBuffers)})${accounts ? ` · ${accounts.total} accounts, ${accounts.connected} connected` : ''} · up ${Math.round((Date.now() - startedAt) / 60e3)}m · holding: ${top || 'n/a'}${since ? ` · since start: ${since}` : ''}${alive}`;
 }
 export const _reset = () => { Object.assign(disk, { failures: 0, lastCode: null, lastAt: null }); Object.assign(turnedAway, { full: 0, waiting: 0, rate: 0, lastAt: null }); }; // tests

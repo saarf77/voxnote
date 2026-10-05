@@ -3,6 +3,7 @@ import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, Browsers } f
 import pino from 'pino';
 import { attach as attachPairing } from './pairing.js';
 import { useAuthStore } from './authstore.js';
+import { bump } from './health.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -73,6 +74,7 @@ export function createLink(cb) {
       qrTimeout: 45000, // each QR (and so a pairing code) lives 45s; a socket offers six before it starts over
     });
     const s = sock;
+    bump('sockets');
     attachPairing(s, { tag, onQr: (qr) => cb.onQr?.(qr), onRefresh: () => cb.onPairRefresh?.() });
 
     s.ev.on('creds.update', saveCreds);
@@ -120,7 +122,8 @@ export function createLink(cb) {
         catch (e) { console.warn(`${tag} message handler error:`, e.message); }
       }
     });
-    s.ev.on('messaging-history.set', ({ chats, contacts, syncType, progress }) => {
+    s.ev.on('messaging-history.set', ({ chats, contacts, messages, syncType, progress }) => {
+      bump('historySets'); bump('historyMessages', messages?.length || 0); bump('historyChats', chats?.length || 0);
       console.log(`${tag} 📲 history sync received (type ${syncType}, ${chats?.length || 0} chats, ${contacts?.length || 0} contacts${progress != null ? `, ${progress}%` : ''})`);
       if (chats?.length) cb.onChats?.(chats);
       if (contacts?.length) cb.onContacts?.(contacts);

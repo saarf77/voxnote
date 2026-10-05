@@ -7,7 +7,9 @@ import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dataDir, dataDirIsMount } from './paths.js';
-import { noteError, memoryLine } from './health.js';
+import { noteError, memoryLine, watchObjects } from './health.js';
+import { proto } from '@whiskeysockets/baileys';
+import { Tenant } from './tenant.js';
 import * as registry from './registry.js';
 import { createWebApp } from './web.js';
 import { PRODUCT_NAME, DEFAULT_PLAN, DAILY_MINUTES_CAP, MAX_TRANSCRIBE_SECONDS } from './tenant.js';
@@ -49,6 +51,7 @@ registry.migrateLegacy();
 const tenants = registry.loadAll();
 console.log(`👥 ${tenants.length} linked account(s) (capacity ${registry.MAX_TENANTS})`);
 registry.startAll();
+for (const [name, ctor] of [['messages', proto.WebMessageInfo], ['messageBodies', proto.Message], ['conversations', proto.Conversation], ['historySyncs', proto.HistorySync], ['tenants', Tenant], ['maps', Map], ['promises', Promise], ['byteArrays', Uint8Array]]) watchObjects(name, ctor);
 // What the process holds, into the log every ten minutes, so a climb can be read after the fact.
 setInterval(() => { const ts = registry.list(); console.log(memoryLine({ total: ts.length, connected: ts.filter((t) => t.ready).length })); }, 10 * 60e3).unref?.();
 
