@@ -53,3 +53,14 @@ test('the memory line measures stalls and collections without causing one', asyn
   assert.match(line, /longest stall \d+\.\ds · gc: \d+ full, longest \d+ms/);
   assert.ok(!/alive:/.test(line));
 });
+
+test('linking downloads the first bundle and the names, not the account\'s old messages', async () => {
+  const { wantHistory } = await import('../src/wa.js');
+  const { proto } = await import('@whiskeysockets/baileys');
+  const T = proto.HistorySync.HistorySyncType;
+  assert.equal(wantHistory({ syncType: T.RECENT }), false); assert.equal(wantHistory({ syncType: T.FULL }), false);
+  for (const t of [T.INITIAL_BOOTSTRAP, T.PUSH_NAME, T.NON_BLOCKING_DATA, T.INITIAL_STATUS_V3, T.ON_DEMAND]) assert.equal(wantHistory({ syncType: t }), true);
+  // Baileys can hand over a notification object rather than a bare type; and never everything off (it warns that breaks id mappings).
+  assert.equal(wantHistory(proto.Message.HistorySyncNotification.create({ syncType: T.RECENT })), false);
+  assert.equal(wantHistory(proto.Message.HistorySyncNotification.create({ syncType: T.INITIAL_BOOTSTRAP })), true);
+});

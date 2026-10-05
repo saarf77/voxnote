@@ -1,5 +1,5 @@
 import './logguard.js'; // the Signal library logs session keys to the console directly
-import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, Browsers, proto } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { attach as attachPairing } from './pairing.js';
 import { useAuthStore } from './authstore.js';
@@ -38,6 +38,17 @@ const RESYNC_DAYS = Number(process.env.APP_STATE_RESYNC_DAYS ?? 7);
  *   const link = createLink({ dir, tag, onQr, onReady, onMessage, onClose, onChats, onContacts, onLoggedOut });
  *   await link.start();   link.stop();
  */
+/**
+ * Which parts of an account's history are downloaded when it links. Nothing here reads old
+ * messages: what is used is which chats are archived and what people are called, and both also
+ * arrive with the app-state sync and with every live message. The "recent" and "full" parts are
+ * tens of thousands of old messages per account, decoded and held in memory for nothing; the
+ * first bundle stays, because it carries the phone-number-to-id mappings the encryption needs.
+ * Exported for tests.
+ */
+const HISTORY = proto.HistorySync.HistorySyncType;
+export const wantHistory = ({ syncType } = {}) => syncType !== HISTORY.RECENT && syncType !== HISTORY.FULL;
+
 // Which WhatsApp Web version to announce: asked for once an hour, not once per connection.
 let versionAt = 0, versionPromise = null;
 function latestVersion() {
@@ -80,6 +91,7 @@ export function createLink(cb) {
       logger,
       markOnlineOnConnect: false, // stay invisible: the phone keeps its notifications
       syncFullHistory: false,     // live messages only
+      shouldSyncHistoryMessage: wantHistory,
       browser: Browsers.ubuntu('Chrome'), // a stock WhatsApp Web session, nothing unusual
       qrTimeout: 45000, // each QR (and so a pairing code) lives 45s; a socket offers six before it starts over
     });
@@ -134,7 +146,7 @@ export function createLink(cb) {
       }
     });
     s.ev.on('messaging-history.set', ({ chats, contacts, messages, syncType, progress }) => {
-      bump('historySets'); bump('historyMessages', messages?.length || 0); bump('historyChats', chats?.length || 0);
+      bump('historySets'); bump('historyMessages', messages?.length || 0); bump('historyChats', chats?.length || 0); bump(`historyType${syncType}Messages`, messages?.length || 0);
       console.log(`${tag} 📲 history sync received (type ${syncType}, ${chats?.length || 0} chats, ${contacts?.length || 0} contacts${progress != null ? `, ${progress}%` : ''})`);
       if (chats?.length) cb.onChats?.(chats);
       if (contacts?.length) cb.onContacts?.(contacts);
