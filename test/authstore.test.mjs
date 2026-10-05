@@ -94,11 +94,13 @@ test('an old folder that shows up again was written by older code, so it wins', 
   back.close();
 });
 
-test('a damaged file stops the move before anything is changed', async () => {
-  const dir = fresh(); await oldFolder(dir);
+test('a damaged key file reads as a missing key, as it did in the old store; the rest is moved', async () => {
+  const dir = fresh(); const before = await oldFolder(dir);
   writeFileSync(join(dir, 'baileys_auth', 'session-torn.json'), '{"half":');
-  await assert.rejects(useAuthStore(dir));
-  assert.ok(existsSync(join(dir, 'baileys_auth', 'creds.json'))); assert.ok(!existsSync(join(dir, 'baileys_auth.migrated')));
+  const store = await useAuthStore(dir); const { state } = await store.auth();
+  assert.deepEqual(state.creds, before.creds);
+  assert.deepEqual(await state.keys.get('session', ['torn', '15550100001.0']), { torn: null, '15550100001.0': before.read.session['15550100001.0'] });
+  store.close();
 });
 
 test('a stopped account writes nothing more, and says nothing about it', async () => {
@@ -115,5 +117,15 @@ test('ten thousand keys are three files, not ten thousand', async () => {
   await state.keys.set({ 'lid-mapping': many });
   assert.ok(readdirSync(dir).length <= 3);
   assert.equal((await state.keys.get('lid-mapping', ['15550109999']))['15550109999'], '100000000009999');
+  store.close();
+});
+
+test('keys without credentials belong to an earlier pairing and are not carried into a new one', async () => {
+  const dir = fresh(); await oldFolder(dir);
+  writeFileSync(join(dir, 'baileys_auth', 'creds.json'), ''); // what a crash in the middle of a write leaves
+  const store = await useAuthStore(dir); const { state } = await store.auth();
+  assert.equal(state.creds.registered, false);
+  assert.deepEqual(await state.keys.get('session', ids('session')), Object.fromEntries(ids('session').map((i) => [i, null])));
+  assert.deepEqual(await state.keys.get('sender-key', ids('sender-key')), Object.fromEntries(ids('sender-key').map((i) => [i, null])));
   store.close();
 });
