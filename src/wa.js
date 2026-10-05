@@ -5,7 +5,23 @@ import { attach as attachPairing } from './pairing.js';
 import { rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const logger = pino({ level: process.env.WA_LOG || 'silent' });
+// Every request that makes the phone show "Finished syncing with WhatsApp on …":
+// app-state syncs, asking the phone to resend a message we couldn't decrypt,
+// history sync. Baileys only logs these at info/debug, so pick them out of its
+// log and print one line each (the message text only, never the objects with jids).
+const PHONE_SYNC = /resync|synced |app state sync|history sync|placeholder resend|PDO|AwaitingInitialSync|Syncing state/i;
+function waLogger(tag) {
+  if (process.env.WA_LOG) return pino({ level: process.env.WA_LOG });
+  return pino({
+    level: 'debug',
+    hooks: {
+      logMethod(args) {
+        const msg = args.find((a) => typeof a === 'string');
+        if (msg && PHONE_SYNC.test(msg)) console.log(`${tag} 📲 ${msg.replace(/ for message \S+/, '').replace(/ \([^)]*\)/, '')}`);
+      },
+    },
+  });
+}
 
 // Asking the phone for an app-state resync makes it show "WhatsApp synced with a
 // linked device" and clears its notifications — so at most once per N days.
@@ -27,6 +43,7 @@ export function createLink(cb) {
   let reconnectTimer = null;
   let stopped = false;
   let sock = null;
+  const logger = waLogger(tag);
 
   function resyncDue() {
     if (RESYNC_DAYS <= 0) return false;
@@ -62,6 +79,7 @@ export function createLink(cb) {
       if (connection === 'open') {
         reconnectAttempts = 0;
         cb.onReady?.(s);
+        console.log(`${tag} 📲 connection open (sync counter ${state.creds.accountSyncCounter ?? 0})`);
         if (resyncDue()) {
           s.resyncAppState?.(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], true)
             .then(() => { markResynced(); console.log(`${tag} 🔄 app-state resynced; next in ${RESYNC_DAYS} days`); })
@@ -98,7 +116,8 @@ export function createLink(cb) {
         catch (e) { console.warn(`${tag} message handler error:`, e.message); }
       }
     });
-    s.ev.on('messaging-history.set', ({ chats, contacts }) => {
+    s.ev.on('messaging-history.set', ({ chats, contacts, syncType, progress }) => {
+      console.log(`${tag} 📲 history sync received (type ${syncType}, ${chats?.length || 0} chats, ${contacts?.length || 0} contacts${progress != null ? `, ${progress}%` : ''})`);
       if (chats?.length) cb.onChats?.(chats);
       if (contacts?.length) cb.onContacts?.(contacts);
     });
