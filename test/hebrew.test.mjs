@@ -47,7 +47,7 @@ test('?lang= switches, is remembered, and the page comes back without the query'
 test('the Hebrew landing page keeps everything the form needs', async () => {
   const { html } = await get('/', HE);
   for (const must of ['id="start"', 'name="consent" value="1"', 'name="tz"', 'class="cta"', 'href="/privacy"', 'class="safe"']) assert.ok(html.includes(must), must);
-  assert.match(html, /תדברו חופשי/);
+  assert.match(html, /פטפטו חופשי/); assert.match(html, /אין דאגות/);
 });
 
 test('the link page draws every state in Hebrew, with the same strings as in English', async () => {

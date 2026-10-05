@@ -98,7 +98,7 @@ const cookies = (req) => Object.fromEntries(String(req.headers.cookie || '').spl
 const setSession = (req, res, t) => res.append('Set-Cookie', `rl=${t.id}.${t.manageKey}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${req.secure ? '; Secure' : ''}`);
 const clearSession = (req, res) => res.append('Set-Cookie', `rl=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${req.secure ? '; Secure' : ''}`);
 
-const TAGLINE_HE = 'תדברו חופשי. כל הודעה קולית בוואטסאפ מופיעה כטקסט נקי, ממש מתחתיה.';
+const TAGLINE_HE = 'פטפטו חופשי. כל הודעה קולית בוואטסאפ מופיעה כטקסט נקי, ממש מתחתיה.';
 // Right to left, for the Hebrew site: the chat bubbles, quotes and fields mirror; phone numbers and codes stay left to right.
 const RTL_CSS = `[dir=rtl] body{font-family:Geist,system-ui,-apple-system,"Segoe UI","Arial Hebrew",Arial,sans-serif}
 [dir=rtl]{--disp:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI","Arial Hebrew",Arial,sans-serif}

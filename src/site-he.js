@@ -9,7 +9,7 @@
 export const HE = {
   title: { how: 'איך זה עובד', privacy: 'פרטיות ותנאים', link: 'חיבור הוואטסאפ' },
   nav: 'איך זה עובד',
-  close: { h: 'קדימה, תדברו.', cta: 'לחבר את הוואטסאפ שלי' },
+  close: { h: 'קדימה, פטפטו.', cta: 'לחבר את הוואטסאפ שלי' },
   foot: (name) => `${name} לא שייך לוואטסאפ. זה לקוח לא רשמי, אז כדאי <a href="/privacy">לקרוא על הסיכונים</a> קודם.`,
   footNav: { how: 'איך זה עובד', privacy: 'פרטיות ותנאים', oss: 'קוד פתוח' },
   slow: ['לאט לאט', 'יותר מדי ניסיונות מהרשת הזו. אפשר לנסות שוב בעוד שעה.'],
@@ -46,7 +46,7 @@ const DOOR = '<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"
 export const landingHe = (c) => `
 <section class="hero wrap">
 ${c.invitedBy ? '<span class="invited">חבר הזמין אתכם.</span>' : ''}
-<h1>תדברו חופשי.<br><span>אנחנו נכתוב.</span></h1>
+<h1>פטפטו חופשי.<br><span>אין דאגות.</span></h1>
 <p class="sub">כל הודעה קולית הופכת לטקסט שקוראים במבט אחד. ממש מתחת להקלטה.</p>
 <form method="post" action="/start" id="start" class="start">
 ${c.INVITE_CODE ? `<div><label for="invite">${HE.inviteLabel}</label><input type="text" id="invite" name="invite" autocomplete="off" required></div>` : ''}
