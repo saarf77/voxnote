@@ -29,6 +29,7 @@ import { summarizeTranscript } from './summarize.js';
 import { createGlossary } from './glossary.js';
 import * as research from './research.js';
 import * as claims from './claims.js';
+import { noteError } from './health.js';
 import { normalizePhone } from './pairing.js';
 import { LOGO_MARK_SVG } from './logo.js';
 import { extractDictation, matchContacts, looksLikeDictation, norm as normName } from './dictate.js';
@@ -86,7 +87,7 @@ const SELF_PREFIX = process.env.SELF_TRX_PREFIX ?? '🎙️ ';
 const CAP_MAP = 5000;
 
 const loadJson = (file, fallback) => { try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return fallback; } };
-const saveJson = (file, value) => { try { writeFileSync(file, JSON.stringify(value)); } catch (e) { console.warn('save failed:', file, e.message); } };
+const saveJson = (file, value) => { try { writeFileSync(file, JSON.stringify(value)); } catch (e) { noteError(e); console.warn('save failed:', file, e.message); } };
 const firstLine = (e) => String(e?.message || e).split('\n')[0].slice(0, 160);
 
 // View-once media is meant to be seen once and vanish; turning it into text

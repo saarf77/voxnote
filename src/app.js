@@ -7,6 +7,7 @@ import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dataDir, dataDirIsMount } from './paths.js';
+import { noteError } from './health.js';
 import * as registry from './registry.js';
 import { createWebApp } from './web.js';
 import { PRODUCT_NAME, DEFAULT_PLAN, DAILY_MINUTES_CAP, MAX_TRANSCRIBE_SECONDS } from './tenant.js';
@@ -25,8 +26,8 @@ try { for (const f of readdirSync(tmpdir())) if (/^wa_\d+_[a-z0-9]+\.mp3$/.test(
 const PORT = Number(process.env.PORT ?? 4599);
 const HOST = process.env.HOST || '127.0.0.1';
 
-process.on('unhandledRejection', (e) => console.warn('⚠️  unhandledRejection:', e?.message || e));
-process.on('uncaughtException', (e) => console.warn('⚠️  uncaughtException:', e?.message || e));
+process.on('unhandledRejection', (e) => { noteError(e); console.warn('⚠️  unhandledRejection:', e?.message || e); });
+process.on('uncaughtException', (e) => { noteError(e); console.warn('⚠️  uncaughtException:', e?.message || e); });
 
 console.log(`Starting ${PRODUCT_NAME}… (uid ${typeof process.getuid === 'function' ? process.getuid() : 'n/a'}${typeof process.getuid === 'function' && process.getuid() === 0 ? ' — ROOT; the container entrypoint should have dropped privileges' : ''})`);
 if (!transcribeEnabled) console.error('❌ No transcription provider configured — nothing will be transcribed.');

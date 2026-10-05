@@ -25,6 +25,7 @@ import { LOGO_SVG, LOGO_DATA_URI } from './logo.js';
 import { normalizePhone, COUNTRIES, countryFromLanguage } from './pairing.js';
 import { speechPerMinute } from './cost.js';
 import * as visitors from './visitors.js';
+import * as health from './health.js';
 import { HE, landingHe, howHe, privacyHe } from './site-he.js';
 
 const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
@@ -480,6 +481,11 @@ function adminPage(o, nonce, days = 30) {
   const rate = measured[1] >= 5 ? measured[0] / measured[1] : 0;
   const all = ts.map((t) => spend(t, rate));
   const allMin = all.reduce((a, x) => a + x.meteredMin + x.earlierMin, 0), allUsd = all.reduce((a, x) => a + x.usd + x.earlierUsd, 0);
+  const h = o.health, d = h.disk, away = h.turnedAway.full + h.turnedAway.waiting + h.turnedAway.rate;
+  // A figure turns red from 80% of its ceiling: that is when there is still time to do something.
+  const warnAt = (text, share) => (share >= 0.8 ? `<span class="danger">${text}</span>` : text);
+  const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : compact(n));
+  const ago = (at) => { const m = Math.round((Date.now() - at) / 60e3); return m < 1 ? 'just now' : m < 120 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
   const tile = (label, big, small = '') => `<div class="tile"><small>${label}</small><b>${big}</b> <span>${small}</span></div>`;
   return `${nonceStyle(nonce, ADMIN_CSS)}<div class="wrap adm"><h1 class="small">Admin</h1>
 <div class="tiles">
@@ -487,10 +493,19 @@ ${tile('Connected', o.connected, `of ${o.accounts} · cap ${o.max}`)}
 ${tile('Transcribed', ts.reduce((n, t) => n + (t.totals?.own || 0) + (t.totals?.others || 0), 0), 'recordings, all accounts')}
 ${tile('Minutes', Math.round(allMin), 'transcribed, all accounts')}
 ${tile('Cost', usd(allUsd), rate ? `${usd(rate)}/min measured` : 'estimate')}
-${tile('Waiting to link', o.pending)}
+${tile('Waiting to link', warnAt(o.pending, o.pending / (o.maxPending || Infinity)), `of ${o.maxPending} at once`)}
 ${tile('Need attention', errors)}
 ${tile('Audio today', o.budget.serverMinutesToday, `${o.budget.serverDailyMinutes ? `/ ${o.budget.serverDailyMinutes} ` : ''}min${o.budget.perAccountDailyMinutes ? ` · ${o.budget.perAccountDailyMinutes}/account` : ''}`)}
-${tile('Storage', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</span>' : 'OK', 'data volume')}
+</div>
+<h2 class="sect">Server</h2>
+<div class="tiles">
+${tile('Accounts', warnAt(`${Math.round((o.accounts / o.max) * 100)}%`, o.accounts / o.max), `${o.accounts} of ${o.max}`)}
+${tile('Files on disk', d?.filesPct == null ? '—' : warnAt(`${d.filesPct}%`, d.filesPct / 100), d?.filesPct == null ? 'not reported here' : `${count(d.filesUsed)} used · ${count(d.filesFree)} free`)}
+${tile('Disk space', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</span>' : d?.spacePct == null ? 'OK' : warnAt(`${d.spacePct}%`, d.spacePct / 100), d ? `${d.freeMb >= 1000 ? `${(d.freeMb / 1000).toFixed(1)} GB` : `${d.freeMb} MB`} free` : 'data volume')}
+${tile('Failed writes', h.diskFailures.failures ? `<span class="danger">${h.diskFailures.failures}</span>` : 0, h.diskFailures.failures ? `last ${esc(h.diskFailures.lastCode)} · ${ago(h.diskFailures.lastAt)}` : 'since restart')}
+${tile('Turned away', away ? `<span class="danger">${away}</span>` : 0, away ? `${h.turnedAway.full} full · ${h.turnedAway.waiting} queue · ${h.turnedAway.rate} rate limit` : 'sign-ups, since restart')}
+${tile('Memory', h.memoryMb, 'MB')}
+${tile('Up', h.uptimeMinutes < 120 ? `${h.uptimeMinutes}m` : `${Math.round(h.uptimeMinutes / 60)}h`, 'since restart')}
 </div>
 ${funnelPanel(funnel(days, o.tenants), days)}
 <h2 class="sect">Accounts</h2>
@@ -713,7 +728,7 @@ ${footFor(req, res)}`, { wide: true, nav: NAV }))));
 
   // ---------- create + link ----------
   app.post('/start', (req, res) => {
-    if (startLimiter.blocked(req.ip)) return res.status(429).type('html').send(small(res, ['Slow down', 'Too many attempts from this network. Try again in an hour.'], HE.slow));
+    if (startLimiter.blocked(req.ip)) { health.noteTurnedAway('rate'); return res.status(429).type('html').send(small(res, ['Slow down', 'Too many attempts from this network. Try again in an hour.'], HE.slow)); }
     startLimiter.hit(req.ip);
     if (req.body.consent !== '1') return res.redirect(303, '/');
     if (INVITE_CODE) {
@@ -741,7 +756,7 @@ ${footFor(req, res)}`, { wide: true, nav: NAV }))));
       hadAccount: prev && prevKey && prev.manageKey === prevKey ? prev.id : null,
     };
     try { t = registry.create({ language: '', locale, referredBy: ref, signup }); if (vid) visitors.addAccount(vid, t.id); }
-    catch (e) { return res.status(503).type('html').send(small(res, ['Try again soon', esc(e.message)], HE.busy)); }
+    catch (e) { health.noteTurnedAway(e.why); health.noteError(e); return res.status(503).type('html').send(small(res, ['Try again soon', esc(e.why ? e.message : 'Something went wrong on our side. Please try again in a few minutes.')], HE.busy)); }
     setSession(req, res, t);
     res.append('Set-Cookie', `rref=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${req.secure ? '; Secure' : ''}`);
     res.redirect(303, `/link/${t.id}`);
@@ -897,7 +912,7 @@ tick();` }));
     const ts = registry.list().map((t) => ({ ...t.status({ history: true }), signup: registry.signupOf(t), expiresAt: t.linkedAt ? null : t.createdAt + registry.UNLINKED_TTL_MIN * 60e3 }));
     return {
       product: PRODUCT_NAME, accounts: ts.length, connected: ts.filter((t) => t.ready).length,
-      pending: registry.pendingCount(), max: registry.MAX_TENANTS, dataMounted: dataDirIsMount(),
+      pending: registry.pendingCount(), maxPending: registry.MAX_PENDING, max: registry.MAX_TENANTS, dataMounted: dataDirIsMount(), health: health.snapshot(),
       budget: { serverMinutesToday: Math.round(secondsToday() / 60), serverDailyMinutes: GLOBAL_DAILY_MINUTES || null, perAccountDailyMinutes: DAILY_MINUTES_CAP || null },
       tenants: ts,
     };

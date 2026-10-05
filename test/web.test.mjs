@@ -99,6 +99,29 @@ test('admin: one card per account shows who it is (WhatsApp name, number); names
   t.phone = ''; t.waName = ''; t.linkedAt = 0;
 });
 
+test('admin shows the server\'s vital signs: files and space on the volume, refused writes, sign-ups turned away', async () => {
+  const health = await import('../src/health.js');
+  // 5 GB volume, every file slot taken, most of the space free: the state that stops a server while "disk" looks fine.
+  const full = health.diskUsage({ blocks: 1200000, bfree: 850000, bavail: 800000, bsize: 4096, files: 305824, ffree: 0 });
+  assert.equal(full.filesPct, 100); assert.equal(full.filesFree, 0); assert.equal(full.spacePct, 29);
+  assert.equal(health.diskUsage(null), null);
+  health._reset();
+  assert.equal(health.noteError(Object.assign(new Error('ENOSPC: no space left on device, open \'/x/y.json\''), { code: 'ENOSPC' })), true);
+  assert.equal(health.noteError(new Error('EDQUOT: quota exceeded')), true);
+  assert.equal(health.noteError(new Error('some other failure')), false);
+  health.noteTurnedAway('full'); health.noteTurnedAway('rate'); health.noteTurnedAway('rate'); health.noteTurnedAway(undefined);
+  const auth = { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') };
+  const j = await (await fetch(`${base}/admin.json`, { headers: auth })).json();
+  assert.equal(j.health.diskFailures.failures, 2); assert.equal(j.health.diskFailures.lastCode, 'EDQUOT');
+  assert.deepEqual([j.health.turnedAway.full, j.health.turnedAway.waiting, j.health.turnedAway.rate], [1, 0, 2]);
+  assert.ok(j.health.memoryMb > 0); assert.ok(j.maxPending > 0);
+  const html = await (await fetch(`${base}/admin`, { headers: auth })).text();
+  for (const label of ['Files on disk', 'Disk space', 'Failed writes', 'Turned away', 'Memory']) assert.ok(html.includes(label), label);
+  assert.match(html, /Failed writes<\/small><b><span class="danger">2<\/span>/);
+  assert.match(html, /1 full · 0 queue · 2 rate limit/);
+  health._reset();
+});
+
 test('a sign-up records where it came from (country, device, source, returning browser); admin shows it in one line', async () => {
   const first = await fetch(`${base}/`);
   const rv = /rv=([0-9a-f]{20})/.exec(first.headers.get('set-cookie') || '')?.[1];
