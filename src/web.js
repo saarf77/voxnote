@@ -504,7 +504,7 @@ ${tile('Files on disk', d?.filesPct == null ? '—' : warnAt(`${d.filesPct}%`, d
 ${tile('Disk space', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</span>' : d?.spacePct == null ? 'OK' : warnAt(`${d.spacePct}%`, d.spacePct / 100), d ? `${d.freeMb >= 1000 ? `${(d.freeMb / 1000).toFixed(1)} GB` : `${d.freeMb} MB`} free` : 'data volume')}
 ${tile('Failed writes', h.diskFailures.failures ? `<span class="danger">${h.diskFailures.failures}</span>` : 0, h.diskFailures.failures ? `last ${esc(h.diskFailures.lastCode)} · ${ago(h.diskFailures.lastAt)}` : 'since restart')}
 ${tile('Turned away', away ? `<span class="danger">${away}</span>` : 0, away ? `${h.turnedAway.full} full · ${h.turnedAway.waiting} queue · ${h.turnedAway.rate} rate limit` : 'sign-ups, since restart')}
-${tile('Memory', h.memoryMb, 'MB')}
+${tile('Memory', h.memoryMb >= 1000 ? `${(h.memoryMb / 1000).toFixed(1)} GB` : `${h.memoryMb} MB`, `heap ${count(h.memory.heapUsedMb)} · buffers ${count(h.memory.buffersMb)} MB`)}
 ${tile('Up', h.uptimeMinutes < 120 ? `${h.uptimeMinutes}m` : `${Math.round(h.uptimeMinutes / 60)}h`, 'since restart')}
 </div>
 ${funnelPanel(funnel(days, o.tenants), days)}
@@ -785,7 +785,7 @@ ${footFor(req, res)}`, { wide: true, nav: NAV }))));
     manual: 'One thing first: in WhatsApp, create a group with just you in it and post <code>#transcribe</code> there. That becomes your {p} group.',
     waiting: 'Your <b>{g}</b> group is waiting at the top of your chats. Record a voice note there and watch its text show up right under it.',
     openWa: 'Open WhatsApp', helpThere: 'Everything else happens in that group too: write <b>help</b> there.',
-    open1: 'Open WhatsApp and go to <b>Settings</b> (on Android, the <b>&#8942;</b> menu)', open2: 'Tap <b>Linked devices</b>, then <b>Link a device</b>',
+    open1: 'Open WhatsApp and go to <b>Settings</b> (on Android, the <b>&#8942;</b> menu)', open2: 'Tap <b>Linked devices</b>, then <b>Link a device</b>. Linked here before? Remove the old device from that list first (it shows as Ubuntu)',
     yourCode: 'Your code.', copy: 'Copy code', copied: 'Copied', withPhone: 'Tap <b>Link with phone number instead</b>', paste: 'Paste the code',
     codeNote: 'WhatsApp may also send a notification asking for the code; tapping it is a shortcut. The code is good for a few minutes, and a fresh one appears here when it expires.',
     gettingCode: 'Getting you a code…', withCode: 'Link with a code.', yourNumber: 'Your WhatsApp number', phonePh: 'Phone number', getCode: 'Get my code',

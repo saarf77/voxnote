@@ -34,9 +34,12 @@ export function diskUsage(stat = (() => { try { return statfsSync(dataDir); } ca
 }
 
 export function snapshot() {
+  const mem = process.memoryUsage();
   return {
     startedAt, uptimeMinutes: Math.round((Date.now() - startedAt) / 60e3),
-    memoryMb: Math.round(process.memoryUsage().rss / 1e6),
+    memoryMb: Math.round(mem.rss / 1e6),
+    // Which kind of memory it is: objects on the JS heap, or bytes held outside it (buffers: media, protocol frames).
+    memory: { heapUsedMb: Math.round(mem.heapUsed / 1e6), heapTotalMb: Math.round(mem.heapTotal / 1e6), buffersMb: Math.round((mem.external + mem.arrayBuffers) / 1e6) },
     disk: diskUsage(), diskFailures: { ...disk }, turnedAway: { ...turnedAway },
   };
 }
