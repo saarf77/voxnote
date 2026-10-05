@@ -50,9 +50,9 @@ async function callProvider(baseUrl, apiKey, system, user, { maxTokens = 600, te
       method: 'POST',
       signal: ac.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      // OpenAI's gpt-5 / o-series chat models take max_completion_tokens, reject a
+      // OpenAI's gpt-5 and later / o-series chat models take max_completion_tokens, reject a
       // custom temperature, and want a small reasoning budget for a rewrite job.
-      body: JSON.stringify(/^(gpt-5|o[1-9])/.test(model) ? {
+      body: JSON.stringify(/^(gpt-([5-9]|\d{2,})|o[1-9])/.test(model) ? {
         model, max_completion_tokens: maxTokens, reasoning_effort: 'low',
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       } : {
