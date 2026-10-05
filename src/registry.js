@@ -56,10 +56,10 @@ export function loadAll() {
 
 /** Start every loaded tenant, a couple of seconds apart, so a restart isn't a burst. */
 export async function startAll() {
-  let i = 0;
-  for (const t of tenants.values()) {
-    setTimeout(() => t.start().catch((e) => console.error(`${t.tag} start failed:`, e.message)), i++ * 2000);
-  }
+  // All at once here; the connection gate lets a few through at a time, in this order. Whoever linked
+  // most recently goes first: a device that vanishes minutes after linking is the one WhatsApp drops.
+  const newestFirst = [...tenants.values()].sort((a, b) => (b.linkedAt || b.createdAt || 0) - (a.linkedAt || a.createdAt || 0));
+  for (const t of newestFirst) t.start().catch((e) => console.error(`${t.tag} start failed:`, e.message));
   setInterval(expireUnlinked, 5 * 60 * 1000).unref?.();
 }
 

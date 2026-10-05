@@ -4,6 +4,7 @@ import pino from 'pino';
 import { attach as attachPairing } from './pairing.js';
 import { useAuthStore } from './authstore.js';
 import { bump } from './health.js';
+import { connectSlot, jitter } from './connectgate.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -37,6 +38,13 @@ const RESYNC_DAYS = Number(process.env.APP_STATE_RESYNC_DAYS ?? 7);
  *   const link = createLink({ dir, tag, onQr, onReady, onMessage, onClose, onChats, onContacts, onLoggedOut });
  *   await link.start();   link.stop();
  */
+// Which WhatsApp Web version to announce: asked for once an hour, not once per connection.
+let versionAt = 0, versionPromise = null;
+function latestVersion() {
+  if (!versionPromise || Date.now() - versionAt > 3600e3) { versionAt = Date.now(); versionPromise = fetchLatestBaileysVersion().catch((e) => { versionPromise = null; throw e; }); }
+  return versionPromise;
+}
+
 export function createLink(cb) {
   const resyncMarker = join(cb.dir, 'appstate-resync.json');
   const tag = cb.tag || '';
@@ -61,8 +69,10 @@ export function createLink(cb) {
     store ??= await useAuthStore(cb.dir, { tag });
     const auth = store;
     const { state, saveCreds } = await auth.auth();
-    const { version } = await fetchLatestBaileysVersion();
-    if (stopped) { auth.close(); store = null; return; } // stop() may have run while we awaited — don't open a socket for a dead account
+    const { version } = await latestVersion();
+    // A slot first: connections are opened a few at a time (see connectgate.js).
+    const release = await connectSlot();
+    if (stopped) { release(); auth.close(); store = null; return; } // stop() may have run while we awaited — don't open a socket for a dead account
 
     sock = makeWASocket({
       version,
@@ -81,6 +91,7 @@ export function createLink(cb) {
 
     s.ev.on('connection.update', async (u) => {
       const { connection, lastDisconnect } = u;
+      if (connection === 'open' || connection === 'close' || u.qr) release(); // the attempt has its answer
       if (connection === 'open') {
         reconnectAttempts = 0;
         cb.onReady?.(s);
@@ -106,7 +117,7 @@ export function createLink(cb) {
         if (reconnectTimer) return;
         // An unpaired socket closes on its own when its QRs run out: not a failure, so no backoff.
         const poolRanOut = code === DisconnectReason.timedOut && !state.creds.registered;
-        const delay = poolRanOut ? 2000 : Math.min(30000, 2000 * 2 ** reconnectAttempts);
+        const delay = jitter(poolRanOut ? 2000 : Math.min(30000, 2000 * 2 ** reconnectAttempts));
         if (!poolRanOut) reconnectAttempts++;
         console.warn(`${tag} ↻ connection closed (${code}${poolRanOut ? ', QR pool used up' : ''}); reconnecting in ${Math.round(delay / 1000)}s${poolRanOut ? '' : ` (attempt ${reconnectAttempts})`}`);
         reconnectTimer = setTimeout(() => {

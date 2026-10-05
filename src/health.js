@@ -5,18 +5,25 @@
  * started: writes the disk refused, sign-ups that were turned away. Counts only, in memory.
  */
 import { statfsSync } from 'node:fs';
-import v8 from 'node:v8';
+import { monitorEventLoopDelay, PerformanceObserver, constants } from 'node:perf_hooks';
 import { dataDir } from './paths.js';
 
 const startedAt = Date.now();
 // Things that happen, counted since the start: a leak tends to follow one of them.
 const counts = {};
 export const bump = (name, by = 1) => { counts[name] = (counts[name] || 0) + (Number(by) || 0); };
-// Kinds of object worth counting when memory climbs; filled in by whoever knows the classes (see app.js).
-const census = new Map();
-export const watchObjects = (name, ctor) => { if (typeof ctor === 'function') census.set(name, ctor); };
-// Counting walks the whole heap, so it is only done while the heap is small enough for that to be quick.
-const CENSUS_MAX_HEAP = 4e9;
+// How long the process stood still, and what each full garbage collection cost and left behind: both come
+// from Node's own counters, which measure without stopping anything.
+const loop = monitorEventLoopDelay({ resolution: 20 }); loop.enable();
+const gc = { majors: 0, longestMs: 0, totalMs: 0, heapAfterMajor: 0 };
+try {
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      gc.totalMs += e.duration; if (e.duration > gc.longestMs) gc.longestMs = e.duration;
+      if (e.detail?.kind === constants.NODE_PERFORMANCE_GC_MAJOR) { gc.majors++; gc.heapAfterMajor = process.memoryUsage().heapUsed; }
+    }
+  }).observe({ entryTypes: ['gc'] });
+} catch { /* not on this Node */ }
 const DISK_CODES = new Set(['ENOSPC', 'EDQUOT', 'EROFS', 'EIO', 'EMFILE', 'ENFILE']);
 const disk = { failures: 0, lastCode: null, lastAt: null };
 const turnedAway = { full: 0, waiting: 0, rate: 0, lastAt: null };
@@ -61,11 +68,11 @@ export function memoryLine(accounts = null) {
   const held = {};
   try { for (const kind of process.getActiveResourcesInfo()) held[kind] = (held[kind] || 0) + 1; } catch { /* older Node */ }
   const top = Object.entries(held).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ${n}`).join(', ');
-  let alive = '';
-  if (census.size && typeof v8.queryObjects === 'function' && mem.heapUsed < CENSUS_MAX_HEAP) {
-    try { alive = ` · alive: ${[...census].map(([name, ctor]) => `${name} ${v8.queryObjects(ctor, { format: 'count' })}`).join(', ')}`; } catch { /* not on this Node */ }
-  }
+  // Since the previous line: the longest the event loop was stuck, and the garbage collector's share of it.
+  const stalled = loop.max / 1e6; loop.reset();
+  const pauses = ` · longest stall ${(stalled / 1000).toFixed(1)}s · gc: ${gc.majors} full, longest ${Math.round(gc.longestMs)}ms, ${(gc.totalMs / 1000).toFixed(1)}s in all${gc.heapAfterMajor ? `, ${gb(gc.heapAfterMajor)} GB live after the last full one` : ''}`;
+  Object.assign(gc, { majors: 0, longestMs: 0, totalMs: 0 });
   const since = Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(', ');
-  return `🧠 memory ${gb(mem.rss)} GB (heap ${gb(mem.heapUsed)} of ${gb(mem.heapTotal)}, buffers ${gb(mem.external + mem.arrayBuffers)})${accounts ? ` · ${accounts.total} accounts, ${accounts.connected} connected` : ''} · up ${Math.round((Date.now() - startedAt) / 60e3)}m · holding: ${top || 'n/a'}${since ? ` · since start: ${since}` : ''}${alive}`;
+  return `🧠 memory ${gb(mem.rss)} GB (heap ${gb(mem.heapUsed)} of ${gb(mem.heapTotal)}, buffers ${gb(mem.external + mem.arrayBuffers)})${accounts ? ` · ${accounts.total} accounts, ${accounts.connected} connected` : ''} · up ${Math.round((Date.now() - startedAt) / 60e3)}m · holding: ${top || 'n/a'}${pauses}${since ? ` · since start: ${since}` : ''}`;
 }
 export const _reset = () => { Object.assign(disk, { failures: 0, lastCode: null, lastAt: null }); Object.assign(turnedAway, { full: 0, waiting: 0, rate: 0, lastAt: null }); }; // tests
