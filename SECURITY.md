@@ -27,7 +27,8 @@ please give a reasonable window to fix before publishing.
 - Keep `DATA_DIR` on a private, persistent volume and back it up privately; it
   holds every linked account's WhatsApp session keys. The container drops root
   and writes files as `0600` / directories as `0700`.
-- Set `ADMIN_PASSWORD` (long); without it `/admin` is disabled. Admin also has
+- Set `ADMIN_PASSWORD` (long) and `ADMIN_USER` (long and random); without the
+  password `/admin` is disabled. Admin also has
   a per-IP lockout after 10 failed attempts. Consider `INVITE_CODE` for a
   closed beta.
 - Set `TRUST_PROXY` to the number of proxy hops in front of the app (default 1;

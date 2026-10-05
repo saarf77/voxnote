@@ -87,8 +87,9 @@ container with a persistent disk; steps for [Railway](https://railway.app):
    | `SUMMARY_BASE_URL` / `SUMMARY_MODEL` | `https://api.openai.com/v1` / `gpt-5.4-mini` (rewrite + summary) |
    | `SUMMARIZE` | `1` |
    | `ADMIN_PASSWORD` | protects `/admin` (health only; never message content) |
+   | `ADMIN_USER` | optional; the `/admin` username, long and random (unset = any username) |
    | `INVITE_CODE` | optional; the landing page then requires it (closed beta) |
-   | `TRUST_PROXY` | proxy hops in front of the app (`1` on Railway) |
+   | `TRUST_PROXY` | proxy hops in front of the app (`2` on Railway) |
    | `PRODUCT_NAME` | the name of the control group created in each user's WhatsApp (default `Ramble`) |
    | `MAX_TENANTS` | how many accounts this server accepts (default 50) |
 

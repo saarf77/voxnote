@@ -12,7 +12,7 @@
  *     per IP and by a global cap on accounts that have not scanned yet
  */
 import express from 'express';
-import { timingSafeEqual, randomBytes } from 'node:crypto';
+import { timingSafeEqual, randomBytes, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import * as registry from './registry.js';
@@ -32,6 +32,8 @@ const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every vo
 const CANONICAL_HOST = (process.env.CANONICAL_HOST || '').toLowerCase();
 const LEGACY_HOSTS = new Set((process.env.LEGACY_HOSTS || '').toLowerCase().split(',').map((h) => h.trim()).filter(Boolean));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || process.env.DASHBOARD_PASSWORD || '';
+// Optional, and best long and random too: then a sign-in needs both, and a guess has to get two secrets right.
+const ADMIN_USER = process.env.ADMIN_USER || '';
 const INVITE_CODE = process.env.INVITE_CODE || ''; // optional: closed beta behind a code
 const KEY_RE = /^[0-9a-f]{32}$/;
 const ID_RE = /^[a-z0-9]{1,64}$/;
@@ -795,9 +797,12 @@ tick();` }));
     const [scheme, b64] = (req.headers.authorization || '').split(' ');
     let ok = false;
     if (scheme === 'Basic' && b64) {
-      const given = Buffer.from(Buffer.from(b64, 'base64').toString('utf8').split(':').slice(1).join(':'));
-      const want = Buffer.from(ADMIN_PASSWORD);
-      ok = given.length === want.length && timingSafeEqual(given, want);
+      // Compared as hashes, so neither the time taken nor a length says how close a guess came;
+      // both are always checked, so a failure never says which one was wrong.
+      const same = (a, b) => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
+      const [user, ...rest] = Buffer.from(b64, 'base64').toString('utf8').split(':');
+      const passOk = same(rest.join(':'), ADMIN_PASSWORD), userOk = same(user, ADMIN_USER || user);
+      ok = passOk && userOk;
     }
     if (ok) { const v = cookies(req).rv; if (visitors.VISITOR_RE.test(v || '')) visitors.markStaff(v); return next(); }
     adminFailLimiter.hit(req.ip);
