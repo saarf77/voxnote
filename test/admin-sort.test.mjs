@@ -54,3 +54,17 @@ test('the admin page stays English and left to right for a browser on the Hebrew
   assert.match(html, /<html lang="en" dir="ltr">/);
 });
 
+
+test('a per-account daily limit: set from the admin, kept on restart, empty goes back to the default', async () => {
+  const t = registry.create({ start: false });
+  const set = (v) => fetch(`${base}/admin/cap/${t.id}`, { method: 'POST', headers: { origin: base, authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64'), 'content-type': 'application/x-www-form-urlencoded' }, body: `minutes=${v}` });
+  const def = t.dailyCapMinutes();
+  assert.equal((await set('60')).status, 200); assert.equal(t.dailyCapMinutes(), 60);
+  const { Tenant } = await import('../src/tenant.js');
+  assert.equal(new Tenant(JSON.parse((await import('node:fs')).readFileSync(join(t.dir, 'tenant.json'), 'utf8')), t.dir).dailyCapMinutes(), 60);
+  assert.equal((await set('abc')).status, 400); assert.equal(t.dailyCapMinutes(), 60);
+  assert.equal((await set('')).status, 200); assert.equal(t.dailyCapMinutes(), def);
+  // Someone stopped at the limit is let through again once it is raised.
+  t.setCapMinutes(1); t.usage = { day: new Date().toISOString().slice(0, 10), seconds: 120, notified: true };
+  assert.equal(t.overCap(), true); t.setCapMinutes(60); assert.equal(t.overCap(), false); assert.equal(t.usage.notified, false);
+});

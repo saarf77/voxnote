@@ -130,6 +130,8 @@ export class Tenant {
       // Opt-in, off for everyone unless the owner asked for it: keep a copy of
       // each recording with what the models made of it, to improve the product.
       keepAudio: rec.keepAudio === true,
+      // Minutes a day for this account alone, set from the admin page; 0 = the server's default (plus invite bonuses).
+      capMinutes: Number.isInteger(rec.capMinutes) && rec.capMinutes > 0 ? rec.capMinutes : 0,
       firstNoteAt: Number(rec.firstNoteAt) || 0, // the owner's first voice note in the group: the end of onboarding
       // Groups nobody switched: 'off' (nothing at all; new accounts) or 'mine' (the owner's own notes get their text).
       // Accounts from before the setting existed keep what they had: their own notes everywhere.
@@ -381,10 +383,12 @@ Each one is a single word.
   }
 
   // ---------- state persistence ----------
-  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, paused: this.paused, groups: this.groups, firstNoteAt: this.firstNoteAt, phone: this.phone, waName: this.waName }); }
+  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, paused: this.paused, groups: this.groups, capMinutes: this.capMinutes || undefined, firstNoteAt: this.firstNoteAt, phone: this.phone, waName: this.waName }); }
 
   /** Today's ceiling for this account: the server default plus whatever invites earned. */
-  dailyCapMinutes() { return DAILY_MINUTES_CAP > 0 ? DAILY_MINUTES_CAP + this.bonusMinutes : 0; }
+  dailyCapMinutes() { return this.capMinutes > 0 ? this.capMinutes : DAILY_MINUTES_CAP > 0 ? DAILY_MINUTES_CAP + this.bonusMinutes : 0; }
+  /** The admin's limit for this account; 0 goes back to the server's default. */
+  setCapMinutes(n) { this.capMinutes = Number.isInteger(n) && n > 0 ? Math.min(n, 1440) : 0; if (this.usage.notified && !this.overCap()) { this.usage.notified = false; saveJson(this.f('usage.json'), this.usage); } this.persistRecord(); console.log(`${this.tag} ⏱️ daily limit → ${this.capMinutes || 'default'}`); return this.capMinutes; }
 
   /** A friend who used this account's invite link just linked their WhatsApp. */
   creditInvite() {
@@ -1357,7 +1361,7 @@ Each one is a single word.
       id: this.id, label: this.label, language: this.language || 'auto', createdAt: this.createdAt, linkedAt: this.linkedAt || null,
       plan: this.plan, model: planLabel(this.plan), abModel: this.abModel || null, keepAudio: this.keepAudio, paused: this.paused,
       mode: this.mode, ready: this.ready, controlGroup: this.target?.name || null, needsManualGroup: this.needsManualGroup,
-      enabledGroups: this.enabled.size, mutedChats: this.muted.size, privateChats: this.quiet.size, groups: this.groups, minutesToday: Math.round(this.usageSecondsToday() / 60),
+      enabledGroups: this.enabled.size, mutedChats: this.muted.size, privateChats: this.quiet.size, groups: this.groups, capMinutes: this.capMinutes || null, minutesToday: Math.round(this.usageSecondsToday() / 60),
       lastMessageAt: this.lastMessageAt || null, stats: this.stats, lastError: this.lastError,
       inviteCode: this.inviteCode, invited: this.invited, dailyMinutes: this.dailyCapMinutes(), bonusMinutes: this.bonusMinutes,
     };

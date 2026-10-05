@@ -431,6 +431,7 @@ ${t.lastError ? `<div class="err"><b>Last error</b> ${when(t.lastError.at)}: ${e
 <details><summary>Support tools</summary><div class="ops">
 <form data-op action="/admin/plan/${esc(t.id)}" data-reload="1"><div class="f"><label>Plan</label><select name="plan">${PLANS.map((p) => opt(p, `${p} · ${planLabel(p)}`, t.plan)).join('')}</select></div><button class="btn">Set</button></form>
 <form data-op action="/admin/language/${esc(t.id)}" data-reload="1"><div class="f"><label>Language</label><select name="code">${LANGUAGES.map(([v, , en]) => opt(v, en, langNow)).join('')}</select></div><button class="btn">Set</button></form>
+<form data-op action="/admin/cap/${esc(t.id)}" data-reload="1"><div class="f"><label>Daily limit, minutes (empty = default)</label><input type="text" name="minutes" inputmode="numeric" value="${t.capMinutes ? esc(t.capMinutes) : ''}" placeholder="${DAILY_MINUTES_CAP || 'no limit'}"></div><button class="btn">Set</button></form>
 <form data-op action="/admin/ab/${esc(t.id)}" data-reload="1"><div class="f"><label>A/B models (comma-separated, empty = off)</label><input type="text" name="model" value="${esc(t.abModel || '')}"></div><button class="btn">Set</button></form>
 <form data-op action="/admin/keep-audio/${esc(t.id)}" data-reload="1"><input type="hidden" name="on" value="${t.keepAudio ? '0' : '1'}"><div class="f"><label>Keep recordings for research</label><p class="muted">${t.keepAudio ? 'On' : 'Off'}</p></div><button class="btn">${t.keepAudio ? 'Turn off' : 'Turn on'}</button></form>
 <form data-op action="/admin/link/${esc(t.id)}" data-confirm="Issue a new private link? The old one stops working."><div class="f"><label>Private link</label><p class="muted">Owner lost it?</p></div><button class="btn">New link</button></form>
@@ -1005,6 +1006,16 @@ tick();` }));
   // Opt-in, per account, not in the user-facing UI: keep this account's recordings
   // (with what the models made of them) to improve the product.
   // POST /admin/keep-audio/<id>?on=1|0
+  // Support: this account's own daily limit, in minutes (empty or 0 = the server's default).
+  // POST /admin/cap/<id>?minutes=60
+  app.post('/admin/cap/:id', adminAuth, (req, res) => {
+    const t = registry.get(String(req.params.id));
+    if (!t) return res.status(404).json({ error: 'no such account' });
+    const raw = String(req.query.minutes ?? req.body?.minutes ?? '').trim();
+    if (raw && !/^\d{1,4}$/.test(raw)) return res.status(400).json({ error: 'minutes must be a whole number (0 or empty = default)' });
+    t.setCapMinutes(Number(raw || 0));
+    res.json({ id: t.id, capMinutes: t.capMinutes || null, dailyMinutes: t.dailyCapMinutes() });
+  });
   app.post('/admin/keep-audio/:id', adminAuth, (req, res) => {
     const t = registry.get(String(req.params.id));
     if (!t) return res.status(404).json({ error: 'no such account' });
