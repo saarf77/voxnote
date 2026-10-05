@@ -8,6 +8,7 @@
   "private": true,
   "scripts": {
     "start": "node --env-file-if-exists=.env src/app.js",
+    "postinstall": "node scripts/patch-deps.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {

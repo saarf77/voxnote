@@ -64,3 +64,17 @@ test('linking downloads the first bundle and the names, not the account\'s old m
   assert.equal(wantHistory(proto.Message.HistorySyncNotification.create({ syncType: T.RECENT })), false);
   assert.equal(wantHistory(proto.Message.HistorySyncNotification.create({ syncType: T.INITIAL_BOOTSTRAP })), true);
 });
+
+test('the library\'s id-mapping caches are bounded and keep no timer per entry (scripts/patch-deps.mjs)', async () => {
+  const { readFileSync } = await import('node:fs');
+  for (const f of ['lid-mapping.js', 'libsignal.js']) {
+    const src = readFileSync(new URL(`../node_modules/@whiskeysockets/baileys/lib/Signal/${f}`, import.meta.url), 'utf8');
+    assert.ok(src.includes('max: 20000') && src.includes('ttlAutopurge: false') && !src.includes('ttlAutopurge: true'), `${f} is patched`);
+  }
+  // Behaviour, not just text: a bounded cache with a TTL and no autopurge creates no timers.
+  const { LRUCache } = await import('lru-cache');
+  const before = process.getActiveResourcesInfo().length;
+  const c = new LRUCache({ ttl: 3 * 24 * 3600e3, max: 20000, ttlAutopurge: false, updateAgeOnGet: true });
+  for (let i = 0; i < 30000; i++) c.set(`pn:${i}`, `lid:${i}`);
+  assert.equal(c.size, 20000); assert.equal(process.getActiveResourcesInfo().length, before);
+});

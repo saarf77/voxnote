@@ -6,7 +6,9 @@ WORKDIR /app
 
 # Install deps first for layer caching. ffmpeg-static downloads the Linux ffmpeg
 # at install time (needs network).
+# scripts/patch-deps.mjs runs from postinstall: it bounds two caches inside the WhatsApp library.
 COPY package.json package-lock.json ./
+COPY scripts ./scripts
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY src ./src
