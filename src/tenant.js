@@ -160,6 +160,10 @@ export class Tenant {
     this.pendingSend = null;     // a dictated message waiting for the owner to pick the recipient
     this.pendingLeave = null;    // "leave" was written in the control group; waiting for the yes
     this.pendingSwitch = null;   // include/exclude of a chat: waiting for the pick and the yes
+    // The owner's last commands and what came of each, for the admin page: the command word, the outcome
+    // and whether our reply went out. Never a name or any text. The reply sent next is credited to the newest.
+    this.commands = loadJson(this.f('commands.json'), []);
+    this.cmdNow = null;
     this.seen = new Set(loadJson(this.f('seen.json'), []));         // message ids already handled
     this.glossary = createGlossary(this.f('glossary.json'));
     this.usage = loadJson(this.f('usage.json'), { day: '', seconds: 0, notified: false });
@@ -901,6 +905,7 @@ Each one is a single word.
     const quoted = original ? { quoted: original } : {};
     if (!candidates.length) {
       console.log(`${this.tag} ✉️ dictation: no contact matched — nothing sent`);
+      this.noteCommand('dictate', 'no contact matched');
       await this.sendPaced(this.target.jid, { text: `🤷 Couldn't find *${to}* in your contacts, so nothing was sent. If the spelling is off, *names: ${to}* in Notes to self teaches me.` }, quoted).catch(() => {});
       return;
     }
@@ -913,6 +918,7 @@ Each one is a single word.
     const ask = certain
       ? `✉️ Send to *${label(certain)}*?\n«${text}»\n\nReply *yes* to send, *no* to drop it — typed or spoken.${others}`
       : `🤔 Not sure who *${to}* is:\n${list.map((c, i) => `${i + 1}. ${label(c)}`).join('\n')}\n\nReply with the number to send them:\n«${text}»\n\nReply *no* to drop it.`;
+    this.noteCommand('dictate', certain ? 'asked to confirm' : `asked to pick (${list.length})`);
     const sent = await this.sendPaced(this.target.jid, { text: ask }, quoted).catch(() => null);
     this.pendingLeave = null; this.pendingSwitch = null; // the newest question owns the next "yes"
     this.pendingSend = { postId: sent?.key?.id || null, candidates: list, proposed: !!certain, text, at: Date.now() };
@@ -926,11 +932,13 @@ Each one is a single word.
     catch (e) {
       console.warn(`${this.tag} ✉️ dictated message failed: ${firstLine(e)}`);
       this.trace('dictation.send_failed', { jid: contact.jid, name: contact.name, text, error: firstLine(e) });
+      this.noteCommand('dictate', 'sending failed');
       await this.sendPaced(this.target.jid, { text: `⚠️ Couldn't send to *${contact.name}*. Nothing was sent.` }).catch(() => {});
       return;
     }
     console.log(`${this.tag} ✉️ sent a dictated message (${text.length} chars)`);
     this.trace('dictation.sent', { jid: contact.jid, name: contact.name, text, messageId: sent?.key?.id || null });
+    this.noteCommand('dictate', 'sent');
     const conf = await this.sendPaced(this.target.jid, { text: `✉️ Sent to *${contact.name}*:\n«${text}»\n\nReply *undo* to delete it for everyone.` }, original ? { quoted: original } : {}).catch(() => null);
     if (conf?.key?.id && sent?.key?.id) {
       this.dictated.set(conf.key.id, { chatId: contact.jid, id: sent.key.id });
@@ -947,9 +955,11 @@ Each one is a single word.
       this.dictated.delete(n.quoted.stanzaId);
       try {
         await this.sock.sendMessage(undo.chatId, { delete: { remoteJid: undo.chatId, fromMe: true, id: undo.id } });
+        this.noteCommand('undo', 'done');
         await this.sendPaced(n.chatId, { text: '↩️ Deleted it for everyone.' }, { quoted: m }).catch(() => {});
       } catch (e) {
         console.warn(`${this.tag} undo failed: ${firstLine(e)}`);
+        this.noteCommand('undo', 'failed');
         await this.sendPaced(n.chatId, { text: "⚠️ Couldn't delete it — remove it in the chat yourself." }, { quoted: m }).catch(() => {});
       }
       return true;
@@ -958,6 +968,7 @@ Each one is a single word.
     if (!p || Date.now() - p.at > PENDING_SEND_TTL_MS || (n.quoted && n.quoted.stanzaId !== p.postId)) return false;
     if (lower === 'no') {
       this.pendingSend = null;
+      this.noteCommand('dictate', 'cancelled');
       await this.sendPaced(n.chatId, { text: '👌 Dropped. Nothing was sent.' }, { quoted: m }).catch(() => {});
       return true;
     }
@@ -974,6 +985,7 @@ Each one is a single word.
     const he = this.ownerLocale() === 'he';
     if (lower === 'leave') {
       this.pendingSend = null; this.pendingSwitch = null;
+      this.noteCommand('leave', 'asked to confirm');
       const sent = await this.sendPaced(n.chatId, { text: he
         ? `⚠️ לנתק את *${PRODUCT_NAME}* מהוואטסאפ שלך ולמחוק את כל מה ששמור עליך כאן?\n\nלענות *yes* כדי להתנתק, *no* כדי להמשיך כרגיל.`
         : `⚠️ Unlink *${PRODUCT_NAME}* from your WhatsApp and erase everything about you here?\n\nReply *yes* to leave, *no* to carry on.` }, { quoted: m }).catch(() => null);
@@ -984,12 +996,14 @@ Each one is a single word.
     if (!p || Date.now() - p.at > PENDING_LEAVE_TTL_MS || (n.quoted && n.quoted.stanzaId !== p.postId)) return false;
     if (lower === 'no') {
       this.pendingLeave = null;
+      this.noteCommand('leave', 'cancelled');
       await this.sendPaced(n.chatId, { text: he ? '👌 נשארים. שום דבר לא השתנה.' : '👌 Staying. Nothing changed.' }, { quoted: m }).catch(() => {});
       return true;
     }
     if (lower !== 'yes') return false;
     this.pendingLeave = null;
     console.log(`${this.tag} 👋 owner asked to leave from the control group`);
+    this.noteCommand('leave', 'done');
     await this.sendPaced(n.chatId, { text: he
       ? `👋 בוצע. *${PRODUCT_NAME}* מתנתק מהוואטסאפ שלך וכל מה שנשמר עליך כאן נמחק. אם הוא עדיין מופיע תחת *מכשירים מקושרים*, אפשר להסיר אותו שם. את הקבוצה הזו אפשר למחוק.`
       : `👋 Done. *${PRODUCT_NAME}* is unlinking from your WhatsApp and everything about you here is erased. If it still shows under *Linked devices*, remove it there. You can delete this group.` }).catch(() => {});
@@ -1100,15 +1114,18 @@ Each one is a single word.
       const src = this.resolveQuotedSource(n.quoted.stanzaId, n.quoted);
       options = src ? [{ chatId: src.chatId, ids: await this.chatIdsFor(src.chatId), name: src.name, isGroup: src.chatId.endsWith('@g.us') }] : [];
       if (!options.length) {
+        this.noteCommand(action, 'could not tell which chat');
         await this.sendPaced(n.chatId, { text: he ? `🤷 לא ברור על איזה צ'אט מדובר. לכתוב *${action}* ואת השם.` : `🤷 Couldn't tell which chat that's about. Write *${action}* and the name.` }, { quoted: m }).catch(() => {});
         return;
       }
     } else if (!name) {
+      this.noteCommand(action, 'shown what is switched');
       await this.sendPaced(n.chatId, { text: this.switchStatus(action) }, { quoted: m }).catch(() => {});
       return;
     } else options = /^[+\d][\d\s()-]{5,}$/.test(name) ? await this.switchByNumber(name) : await this.switchOptions(name);
     this.trace('switch.match', { action, name, options: options.map((o) => ({ chatId: o.chatId, ids: o.ids, name: o.name })) });
     if (!options.length) {
+      this.noteCommand(action, /^[+\d]/.test(name) ? 'no chat with that number' : 'no chat with that name');
       await this.sendPaced(n.chatId, { text: he
         ? `🤷 לא מצאתי איש קשר או קבוצה בשם *${name}*. שום דבר לא השתנה.\nאפשר לכתוב את המספר במקום השם (*${action} 050-1234567*), או להעביר לכאן הודעה קולית מהצ'אט ולענות לה *${action}*.`
         : `🤷 No contact or group called *${name}*. Nothing changed.\nWrite the number instead of the name (*${action} +1 555 123 4567*), or forward a voice note from that chat to here and reply *${action}* to it.` }, { quoted: m }).catch(() => {});
@@ -1117,6 +1134,7 @@ Each one is a single word.
     this.pendingSend = null; this.pendingLeave = null; // the newest question owns the next "yes"
     if (options.length === 1) { await this.confirmSwitch(m, n.chatId, action, options, options[0]); return; }
     const list = options.map((o, i) => `${i + 1}. ${this.switchLabel(o)}`).join('\n');
+    this.noteCommand(action, `asked to pick (${options.length})`);
     const sent = await this.sendPaced(n.chatId, { text: he
       ? `🤔 למי הכוונה?\n${list}\n\nלענות במספר, או *no* כדי לבטל.`
       : `🤔 Which one?\n${list}\n\nReply with the number, or *no* to cancel.` }, { quoted: m }).catch(() => null);
@@ -1135,6 +1153,7 @@ Each one is a single word.
         : `🔇 Exclude *${label}*?\nNo recording in this chat will be transcribed, your own voice notes included.\n\nReply *yes* to exclude, *no* to cancel.`)
       : (he ? `🟢 לתמלל את *${label}*?\nהקלטות בצ'אט הזה יקבלו טקסט מתחתיהן.\n\nלענות *yes* כדי לתמלל, *no* כדי לבטל.`
         : `🟢 Transcribe *${label}*?\nRecordings in this chat will get their text under them.\n\nReply *yes* to include it, *no* to cancel.`);
+    this.noteCommand(action, `asked to confirm (${chosen.isGroup ? 'a group' : 'a private chat'})`);
     const sent = await this.sendPaced(chatId, { text }, m ? { quoted: m } : {}).catch(() => null);
     this.pendingSwitch = { postId: sent?.key?.id || null, action, options, chosen, at: Date.now() };
   }
@@ -1147,6 +1166,7 @@ Each one is a single word.
     const he = this.ownerLocale() === 'he';
     if (lower === 'no') {
       this.pendingSwitch = null;
+      this.noteCommand(p.action, 'cancelled');
       await this.sendPaced(n.chatId, { text: he ? '👌 בוטל. שום דבר לא השתנה.' : '👌 Cancelled. Nothing changed.' }, { quoted: m }).catch(() => {});
       return true;
     }
@@ -1171,6 +1191,7 @@ Each one is a single word.
     for (const id of all) { action === 'exclude' ? this.muted.add(id) : this.muted.delete(id); quiet ? this.quiet.add(id) : this.quiet.delete(id); }
     this.saveSet('muted.json', this.muted); this.saveSet('quiet.json', this.quiet);
     console.log(`${this.tag} ${include ? '🟢 included' : quiet ? '🔒 private' : '🔇 excluded'}: a ${isGroup ? 'group' : 'private chat'}`);
+    this.noteCommand(action, `done (${isGroup ? 'a group' : 'a private chat'})`);
     const he = this.ownerLocale() === 'he';
     const text = quiet
       ? (he ? `🔒 בוצע: *${name}* מתומלל בפרטיות. הטקסט של כל הקלטה שם יגיע לכאן. כדי שיופיע בצ'אט: *include ${name}*. כדי להפסיק: *exclude ${name}*.`
@@ -1235,13 +1256,16 @@ Each one is a single word.
       return true;
     }
     if (inControl && n.fromMe && !n.hasMedia && lower === 'help' && !this.ownPosts.has(n.id)) {
+      this.noteCommand('help', 'shown');
       await this.sendPaced(n.chatId, { text: this.helpText() }, { quoted: m }).catch(() => {});
       return true;
     }
     // language, or language <name>: the transcription language, set from WhatsApp.
     const lang = /^language(?:\s*:?\s*(\S+))?$/.exec(lower);
     if (inControl && n.fromMe && !n.hasMedia && lang && !this.ownPosts.has(n.id)) {
-      await this.sendPaced(n.chatId, { text: this.languageReply(lang[1]) }, { quoted: m }).catch(() => {});
+      const before = this.language, text = this.languageReply(lang[1]);
+      this.noteCommand('language', !lang[1] ? 'shown' : this.language !== before ? `set to ${this.language || 'auto'}` : 'unchanged (same, or not a language)');
+      await this.sendPaced(n.chatId, { text }, { quoted: m }).catch(() => {});
       return true;
     }
     // groups, or groups off / groups mine: what happens in groups nobody switched.
@@ -1250,6 +1274,7 @@ Each one is a single word.
       const want = grp[1] === 'off' || grp[1] === 'mine' ? grp[1] : null;
       const changed = want && want !== this.groups;
       if (changed) { this.groups = want; this.persistRecord(); console.log(`${this.tag} 👥 groups → ${want}`); }
+      this.noteCommand('groups', changed ? `set to ${want}` : want ? `already ${want}` : grp[1] ? 'not an option' : 'shown');
       await this.sendPaced(n.chatId, { text: this.groupsReply(want ? 'set' : 'show') }, { quoted: m }).catch(() => {});
       return true;
     }
@@ -1258,6 +1283,7 @@ Each one is a single word.
       const want = lower === 'pause';
       const how = want === this.paused ? (want ? 'already-paused' : 'already-running') : (want ? 'paused' : 'resumed');
       if (want !== this.paused) { this.paused = want; this.persistRecord(); console.log(`${this.tag} ${want ? '⏸️ paused' : '▶️ resumed'} by the owner`); }
+      this.noteCommand(lower, how.replace('-', ' '));
       await this.sendPaced(n.chatId, { text: this.pauseReply(how) }, { quoted: m }).catch(() => {});
       return true;
     }
@@ -1275,7 +1301,7 @@ Each one is a single word.
     // delete, as a reply to any post of ours: revoke it for everyone, then the command.
     if (n.fromMe && n.quoted && lower === 'delete') {
       const key = { remoteJid: n.chatId, fromMe: true, id: n.quoted.stanzaId, ...(n.isGroup && this.ownId ? { participant: this.ownId } : {}) };
-      try { await this.sock.sendMessage(n.chatId, { delete: key }); } catch (e) { console.warn(`${this.tag} delete failed: ${firstLine(e)}`); }
+      try { await this.sock.sendMessage(n.chatId, { delete: key }); this.noteCommand('delete', 'done'); } catch (e) { this.noteCommand('delete', 'failed'); console.warn(`${this.tag} delete failed: ${firstLine(e)}`); }
       try { await this.sock.sendMessage(n.chatId, { delete: m.key }); } catch { /* best effort */ }
       return true;
     }
@@ -1283,17 +1309,31 @@ Each one is a single word.
     if (n.fromMe && this.isSelfChat(n.chatId) && /^names\b/i.test(txt)) {
       const rest = txt.replace(/^names\s*:?\s*/i, '').trim();
       const g = this.glossary; let reply;
+      this.noteCommand('names', !rest ? 'shown' : rest.startsWith('-') ? 'removed' : 'added');
       if (!rest) reply = g.list().length ? `📇 Known names (${g.list().length}): ${g.list().join(', ')}` : '📇 No names yet. Write: *names: David, Eden*';
       else if (rest.startsWith('-')) reply = `📇 Removed ${g.remove(rest.slice(1).split(/[,،]/))}. Now: ${g.list().join(', ') || '(none)'}`;
       else reply = `📇 Added ${g.add(rest.split(/[,،]/))}. Known names (${g.list().length}): ${g.list().join(', ')}`;
       await this.sendPaced(n.chatId, { text: reply }, { quoted: m }).catch(() => {});
       return true;
     }
+    // Typed in the Ramble group and nothing took it: an answer nothing was waiting for, or not a command.
+    if (inControl && n.fromMe && !n.hasMedia && !this.ownPosts.has(n.id)) {
+      this.noteCommand(/^(yes|no|undo|\d{1,2})$/.test(lower) ? 'reply' : 'text', /^(yes|no|undo|\d{1,2})$/.test(lower) ? 'nothing was waiting for it (expired or already answered)' : 'not a command');
+      this.cmdNow = null; // nothing is sent back for these
+    }
     return false;
+  }
+
+  noteCommand(cmd, outcome) {
+    const e = { at: Date.now(), cmd, outcome, replied: null };
+    this.commands = [...this.commands, e].slice(-30); this.cmdNow = e;
+    saveJson(this.f('commands.json'), this.commands);
   }
 
   // ---------- sending (paced, one queue per account) ----------
   sendPaced(jid, content, opts = {}) {
+    const cmd = this.cmdNow; this.cmdNow = null; // the reply to the command just noted, if any
+    const replied = (ok) => { if (cmd) { cmd.replied = ok; saveJson(this.f('commands.json'), this.commands); } };
     const run = async () => {
       if (this.stopped) throw new Error('account stopped');
       await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
@@ -1304,6 +1344,7 @@ Each one is a single word.
       return sent;
     };
     const p = this.sendChain.then(run, run);
+    p.then(() => replied(true), () => replied(false));
     this.sendChain = p.catch(() => {});
     return p;
   }
@@ -1319,7 +1360,7 @@ Each one is a single word.
       inviteCode: this.inviteCode, invited: this.invited, dailyMinutes: this.dailyCapMinutes(), bonusMinutes: this.bonusMinutes,
     };
     // The admin page also sees who the account is: its number, WhatsApp name and who invited it.
-    if (history) Object.assign(base, { usageHistory: this.usageHistory, totals: this.totals, phone: this.phone || null, waName: this.waName || null, referredBy: this.referredBy || null });
+    if (history) Object.assign(base, { usageHistory: this.usageHistory, totals: this.totals, commands: this.commands.slice(-12).reverse(), phone: this.phone || null, waName: this.waName || null, referredBy: this.referredBy || null });
     return full ? { ...base, qr: this.qr, pairingCode: this.pairingCode, pairByCode: !!this.pairPhone, rescan: this.pairRefreshedAt > 0 && Date.now() - this.pairRefreshedAt < 180e3, waMe: this.ownId ? `https://wa.me/${this.ownId.split('@')[0]}` : null, product: PRODUCT_NAME } : base;
   }
 }

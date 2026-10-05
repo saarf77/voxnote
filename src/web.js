@@ -320,6 +320,7 @@ const ADMIN_CSS = `
 .ops .btn{height:40px;padding:0 14px;font-size:14px;white-space:nowrap}
 .adout{margin-top:10px;font-size:13px;font-family:var(--mono);overflow-wrap:anywhere;color:var(--mute)}
 .empty{color:var(--mute);padding:24px 0}
+.cmds ul{list-style:none;margin:8px 0 0;padding:0;font-size:14px}.cmds li{padding:3px 0;overflow-wrap:anywhere}.cmds li .muted{display:inline-block;min-width:64px}
 .funnel{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;margin-bottom:28px}
 .fttl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:6px}.fttl h2,.sect{font-size:28px}.fttl nav{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;align-items:center;text-decoration:none}
@@ -391,6 +392,13 @@ function cards(ts, byCode, rate, byId) {
     return g[0] === t ? pendingCard(t, byId, g.slice(1)) : '';
   }).join('');
 }
+// The owner's last commands in the Ramble group, newest first: the word, what came of it, and whether our reply went out.
+const CMD_BAD = /no chat|could not|failed|nothing was waiting|not a command|not an option|no contact|unchanged/;
+function commandList(cmds = []) {
+  if (!cmds.length) return '';
+  const row = (c) => `<li><span class="muted">${when(c.at)}</span> <b>${esc(c.cmd)}</b> <span${CMD_BAD.test(c.outcome) ? ' class="danger"' : ''}>${esc(c.outcome)}</span>${c.replied === false ? ' <span class="danger">· reply not delivered</span>' : ''}</li>`;
+  return `<details class="cmds"${Date.now() - cmds[0].at < 864e5 ? ' open' : ''}><summary>Recent commands <span class="muted">(${cmds.length}, last ${ago(cmds[0].at)})</span></summary><ul>${cmds.map(row).join('')}</ul></details>`;
+}
 function adminCard(t, byCode, rate, byId) {
   if (!t.linkedAt) return pendingCard(t, byId);
   const [state, stateLabel] = stateOf(t);
@@ -416,6 +424,7 @@ function adminCard(t, byCode, rate, byId) {
 <div><small>Invites</small><p>${t.invited} friend${t.invited === 1 ? '' : 's'} joined${inviter ? `<br><span class="muted">invited by <a href="#a-${esc(inviter.id)}">${esc(inviter.waName || inviter.label || inviter.id.slice(0, 8))}</a></span>` : ''}</p></div>
 </div>
 ${t.signup ? `<p class="bits"><b>Signed up from</b> ${signupBits(t, byId).join(' · ')}</p>` : ''}
+${commandList(t.commands)}
 ${t.lastError ? `<div class="err"><b>Last error</b> ${when(t.lastError.at)}: ${esc(t.lastError.message)}</div>` : ''}
 <details><summary>Support tools</summary><div class="ops">
 <form data-op action="/admin/plan/${esc(t.id)}" data-reload="1"><div class="f"><label>Plan</label><select name="plan">${PLANS.map((p) => opt(p, `${p} · ${planLabel(p)}`, t.plan)).join('')}</select></div><button class="btn">Set</button></form>
