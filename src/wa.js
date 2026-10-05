@@ -1,8 +1,9 @@
 import './logguard.js'; // the Signal library logs session keys to the console directly
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { attach as attachPairing } from './pairing.js';
-import { rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { useAuthStore } from './authstore.js';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Every request that makes the phone show "Finished syncing with WhatsApp on …":
@@ -36,13 +37,13 @@ const RESYNC_DAYS = Number(process.env.APP_STATE_RESYNC_DAYS ?? 7);
  *   await link.start();   link.stop();
  */
 export function createLink(cb) {
-  const authDir = join(cb.dir, 'baileys_auth');
   const resyncMarker = join(cb.dir, 'appstate-resync.json');
   const tag = cb.tag || '';
   let reconnectAttempts = 0;
   let reconnectTimer = null;
   let stopped = false;
   let sock = null;
+  let store = null; // this account's session keys; one open at a time
   const logger = waLogger(tag);
 
   function resyncDue() {
@@ -56,9 +57,11 @@ export function createLink(cb) {
 
   async function start() {
     if (stopped) return;
-    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    store ??= await useAuthStore(cb.dir, { tag });
+    const auth = store;
+    const { state, saveCreds } = await auth.auth();
     const { version } = await fetchLatestBaileysVersion();
-    if (stopped) return; // stop() may have run while we awaited — don't open a socket for a dead account
+    if (stopped) { auth.close(); store = null; return; } // stop() may have run while we awaited — don't open a socket for a dead account
 
     sock = makeWASocket({
       version,
@@ -79,6 +82,7 @@ export function createLink(cb) {
       if (connection === 'open') {
         reconnectAttempts = 0;
         cb.onReady?.(s);
+        auth.settle().catch((e) => console.warn(`${tag} could not remove the old session folder:`, e.message));
         console.log(`${tag} 📲 connection open (sync counter ${state.creds.accountSyncCounter ?? 0})`);
         if (resyncDue()) {
           s.resyncAppState?.(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], true)
@@ -94,7 +98,7 @@ export function createLink(cb) {
         if (loggedOut) {
           // Revoked on the phone (or a pairing that never completed): wipe and re-pair.
           console.warn(`${tag} ❌ session logged out — clearing credentials, fresh pairing next`);
-          try { rmSync(authDir, { recursive: true, force: true }); } catch (e) { console.warn(`${tag} could not clear auth dir:`, e.message); }
+          try { await auth.clear(); } catch (e) { console.warn(`${tag} could not clear the session:`, e.message); }
           cb.onLoggedOut?.();
         }
         if (reconnectTimer) return;
@@ -133,10 +137,10 @@ export function createLink(cb) {
     stopped = true;
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     const s = sock; sock = null;
-    if (!s) return Promise.resolve({ loggedOut: false });
+    if (!s) { store?.close(); store = null; return Promise.resolve({ loggedOut: false }); }
     // Report honestly whether WhatsApp acknowledged the logout; the caller warns if not.
     const out = logout ? s.logout().then(() => ({ loggedOut: true }), () => ({ loggedOut: false })) : Promise.resolve({ loggedOut: false });
-    return out.finally(() => { try { s.end?.(); } catch { /* ignore */ } });
+    return out.finally(() => { try { s.end?.(); } catch { /* ignore */ } store?.close(); store = null; });
   }
 
   /** A pairing code for this phone number, valid for the current socket (the QR keeps working too). */
