@@ -120,6 +120,37 @@ test('a sign-up records where it came from (country, device, source, returning b
   await registry.remove(made.id);
 });
 
+test('funnel: one person per browser, crawlers and the operator left out; came → clicked → linked', async () => {
+  const admin = { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') };
+  const ua = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36';
+  const funnelOf = async () => { const h = await (await fetch(`${base}/admin?days=1`, { headers: admin })).text(); return [...h.matchAll(/<div class="fhead"><b>(\d+)<\/b>/g)].map((m) => Number(m[1])); };
+  const before = await funnelOf();
+  // A crawler and a link preview get no id and count as nobody.
+  for (const bot of ['Googlebot/2.1 (+http://www.google.com/bot.html)', 'WhatsApp/2.23.20.0 A']) assert.ok(!/rv=/.test((await fetch(`${base}/`, { headers: { 'user-agent': bot } })).headers.get('set-cookie') || ''));
+  // A person: lands from a referring site, the page's script reports back, visits twice, signs up twice, links once.
+  const land = await fetch(`${base}/`, { headers: { 'user-agent': ua, referer: 'https://news.example.org/post/1' } });
+  const rv = /rv=([0-9a-f]{20})/.exec(land.headers.get('set-cookie'))[1];
+  const h = { 'user-agent': ua, cookie: `rv=${rv}`, origin: base };
+  assert.equal((await fetch(`${base}/hi`, { method: 'POST', headers: h })).status, 204);
+  await fetch(`${base}/`, { headers: h });
+  // Two sign-ups from this browser, as /start records them (the HTTP path is covered above; its per-address limit is shared by these tests).
+  const visitors = await import('../src/visitors.js');
+  const signUp = () => { const x = registry.create({ signup: { visitor: rv, device: 'Android · Chrome' }, start: false }); visitors.addAccount(rv, x.id); return x; };
+  const a = signUp(), b = signUp();
+  let html = await (await fetch(`${base}/admin`, { headers: admin })).text();
+  assert.match(html, /×2 sign-ups, same browser/, 'two waiting sign-ups from one browser are one line');
+  assert.deepEqual(await funnelOf(), [before[0] + 1, before[1] + 1, before[2]], 'one person came and clicked, twice over');
+  b.linkedAt = Date.now(); b.onFirstLink(b);
+  assert.deepEqual(await funnelOf(), [before[0] + 1, before[1] + 1, before[2] + 1]);
+  html = await (await fetch(`${base}/admin?days=1`, { headers: admin })).text();
+  assert.match(html, /<span>news\.example\.org<\/span><span>1<\/span><span>1<\/span><span>1<\/span><span>100%<\/span>/);
+  assert.match(html, /<span>Android<\/span>/);
+  // The operator's own browser opening /admin leaves the funnel.
+  await fetch(`${base}/admin`, { headers: { ...admin, cookie: `rv=${rv}` } });
+  assert.deepEqual(await funnelOf(), before);
+  await registry.remove(a.id); await registry.remove(b.id);
+});
+
 test('admin: wrong passwords are rate limited; healthz says only ok', async () => {
   for (let i = 0; i < 10; i++) assert.equal((await fetch(`${base}/admin.json`, { headers: { authorization: 'Basic ' + Buffer.from('x:wrong').toString('base64') } })).status, 401);
   assert.equal((await fetch(`${base}/admin.json`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).status, 429, 'locked out even with the right password');

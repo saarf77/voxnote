@@ -230,6 +230,7 @@ const countryName = (code) => { try { return regionNames.of(code) || code; } cat
 const flag = (code) => (/^[A-Z]{2}$/.test(code || '') ? String.fromCodePoint(...[...code].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '');
 // Where they came from: the referring site's host (the landing page reports it), or an invite.
 const sourceHost = (v) => { try { const u = new URL(String(v)); return /^https?:$/.test(u.protocol) ? u.hostname.replace(/^www\./, '').slice(0, 80) : ''; } catch { return ''; } };
+const BOT_RE = /bot\b|bot\/|crawl|spider|slurp|preview|externalhit|^WhatsApp\/|^curl|^wget|python|go-http|node-fetch|axios|undici|headless|lighthouse|uptime|monitor|scanner/i;
 const TZ_RE = /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,2}$/;
 
 // ---------- admin page ----------
@@ -288,6 +289,18 @@ const ADMIN_CSS = `
 .ops .btn{height:40px;padding:0 14px;font-size:14px;white-space:nowrap}
 .adout{margin-top:10px;font-size:13px;font-family:var(--mono);overflow-wrap:anywhere;color:var(--mute)}
 .empty{color:var(--mute);padding:24px 0}
+.funnel{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;margin-bottom:28px}
+.fttl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:6px}.fttl h2,.sect{font-size:28px}.fttl nav{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;text-decoration:none}
+.sect{margin:0 0 14px}
+.fsteps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin:16px 0}
+.fhead{display:flex;align-items:baseline;gap:8px}.fhead b{font-family:var(--disp);font-size:40px;letter-spacing:-.03em;line-height:1}.fhead span{font-size:15px}
+.fbar{display:block;width:100%;height:10px;margin:8px 0 6px}.fbar rect{fill:var(--green)}.fbar rect.bg{fill:var(--chat)}
+.fstep small{color:var(--mute);font-size:13px}
+.fbreaks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;border-top:1px solid var(--line);padding-top:14px}
+.fbreak h4{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.frow{display:grid;grid-template-columns:minmax(0,2fr) repeat(4,minmax(0,1fr));gap:6px;font-size:14px;padding:4px 0;border-bottom:1px solid var(--line)}
+.frow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.frow span:not(:first-child){text-align:right}.frow.fh{color:var(--mute);font-size:12px}
 .bits{margin-top:14px;font-size:14px;overflow-wrap:anywhere}.bits code{font-size:13px}.slim{padding:14px 18px}.slim h3{font-size:18px}.slim .who>.muted{font-size:14px}.slim .bits{margin-top:6px}
 `;
 // Buttons post with fetch (the browser re-sends the Basic credentials) and show the answer inline.
@@ -295,7 +308,7 @@ const ADMIN_JS = `
 const q=document.getElementById('q'),cards=[...document.querySelectorAll('.acct')],none=document.getElementById('none');let f='all';
 const apply=()=>{const s=q.value.trim().toLowerCase().replace(/[\\s+()-]/g,'');let n=0;for(const c of cards){const on=(f==='all'||c.dataset.state===f||(f==='bad'&&c.dataset.state==='warn'))&&(!s||c.dataset.find.includes(s));c.hidden=!on;n+=on;}none.hidden=n>0;};
 q.addEventListener('input',apply);apply();
-for(const b of document.querySelectorAll('.chip'))b.addEventListener('click',()=>{f=b.dataset.f;for(const x of document.querySelectorAll('.chip'))x.setAttribute('aria-pressed',x===b);apply();});
+for(const b of document.querySelectorAll('.adbar .chip'))b.addEventListener('click',()=>{f=b.dataset.f;for(const x of document.querySelectorAll('.adbar .chip'))x.setAttribute('aria-pressed',x===b);apply();});
 for(const form of document.querySelectorAll('form[data-op]'))form.addEventListener('submit',async(e)=>{e.preventDefault();
   if(form.dataset.confirm&&!confirm(form.dataset.confirm))return;
   const out=form.closest('.acct').querySelector('.adout'),u=new URL(form.getAttribute('action'),location.origin);for(const [k,v] of new FormData(form))u.searchParams.set(k,v);
@@ -329,13 +342,23 @@ function signupBits(t, byId) {
   ].filter(Boolean);
 }
 // An account that never linked: one line, and when it will be removed.
-function pendingCard(t, byId) {
+function pendingCard(t, byId, more = []) {
   const left = Math.max(0, Math.round((t.expiresAt - Date.now()) / 60e3));
   const find = [t.id, t.signup?.ip, t.signup?.device, t.signup?.from, t.signup?.country && countryName(t.signup.country.code)].filter(Boolean).join(' ').toLowerCase().replace(/[\s+()-]/g, '');
   return `<article class="acct slim" data-state="wait" data-find="${esc(find)}" id="a-${esc(t.id)}">
-<div class="who"><h3>Waiting to link</h3><code>${esc(t.id.slice(0, 8))}</code><span class="muted">signed up ${when(t.createdAt)} · ${t.mode === 'qr' ? 'code or QR on screen' : esc(t.mode)} · removed in ${left} min unless they link</span><span class="dot wait">Waiting</span></div>
+<div class="who"><h3>Waiting to link${more.length ? ` <span class="muted">×${more.length + 1} sign-ups, same browser</span>` : ''}</h3><code>${esc([t, ...more].map((x) => x.id.slice(0, 8)).join(', '))}</code><span class="muted">signed up ${when(t.createdAt)} · ${t.mode === 'qr' ? 'code or QR on screen' : esc(t.mode)} · removed in ${left} min unless they link</span><span class="dot wait">Waiting</span></div>
 ${t.signup ? `<p class="bits">${signupBits(t, byId).join(' · ')}</p>` : ''}
 </article>`;
+}
+// Sign-ups still waiting that came from the same browser are one person: one line for all of them.
+function cards(ts, byCode, rate, byId) {
+  const groups = new Map();
+  for (const t of ts) if (!t.linkedAt && t.signup?.visitor) groups.set(t.signup.visitor, [...(groups.get(t.signup.visitor) || []), t]);
+  return ts.map((t) => {
+    if (t.linkedAt || !t.signup?.visitor) return adminCard(t, byCode, rate, byId);
+    const g = groups.get(t.signup.visitor);
+    return g[0] === t ? pendingCard(t, byId, g.slice(1)) : '';
+  }).join('');
 }
 function adminCard(t, byCode, rate, byId) {
   if (!t.linkedAt) return pendingCard(t, byId);
@@ -373,7 +396,40 @@ ${t.lastError ? `<div class="err"><b>Last error</b> ${when(t.lastError.at)}: ${e
 </div><p class="adout"></p></details>
 </article>`;
 }
-function adminPage(o, nonce) {
+// The funnel: people (one per browser) who first came in the period, how many clicked
+// "Link my WhatsApp", and how many finished linking. Crawlers, link previews and the
+// operator's own browser are left out; see visitors.js.
+const FUNNEL_PERIODS = [[1, 'Last 24h'], [7, '7 days'], [30, '30 days'], [0, 'All time']];
+const deviceKind = (d = '') => { const os = d.split(' · ')[0]; return ['iPhone', 'iPad', 'Android', 'Mac', 'Windows', 'Linux', 'ChromeOS'].includes(os) ? os : 'Other'; };
+function funnel(days, tenants) {
+  const start = days ? Date.now() - days * 864e5 : 0;
+  const linkedIds = new Set(tenants.filter((t) => t.linkedAt).map((t) => t.id));
+  const people = visitors.list().map(([, v]) => v).filter((v) => !v.staff && (v.human || v.accounts.length));
+  const since = people.filter((v) => v.human).reduce((m, v) => Math.min(m, v.first), Infinity);
+  const steps = (vs) => {
+    const clicked = vs.filter((v) => v.accounts.length);
+    return { came: vs.length, clicked: clicked.length, linked: clicked.filter((v) => v.linkedAt || v.accounts.some((a) => linkedIds.has(a))).length };
+  };
+  const cohort = people.filter((v) => v.first >= start);
+  const by = (key) => [...cohort.reduce((m, v) => m.set(key(v), [...(m.get(key(v)) || []), v]), new Map())].map(([k, vs]) => [k, steps(vs)]).sort((a, b) => b[1].came - a[1].came);
+  return { ...steps(cohort), since: Number.isFinite(since) ? since : null, bySource: by((v) => v.from || 'direct'), byDevice: by((v) => deviceKind(v.device)) };
+}
+const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
+const bar = (n, max) => `<svg class="fbar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect width="100" height="10" rx="2" class="bg"/><rect width="${max ? Math.max(n ? 1 : 0, (n / max) * 100).toFixed(1) : 0}" height="10" rx="2"/></svg>`;
+function funnelPanel(f, days) {
+  const step = (label, n, note) => `<div class="fstep"><div class="fhead"><b>${n}</b><span>${label}</span></div>${bar(n, f.came)}<small>${note}</small></div>`;
+  const rows = (title, list) => list.length ? `<div class="fbreak"><h4>${title}</h4><div class="frow fh"><span></span><span>came</span><span>clicked</span><span>linked</span><span>overall</span></div>${list.map(([k, x]) => `<div class="frow"><span>${esc(k)}</span><span>${x.came}</span><span>${x.clicked}</span><span>${x.linked}</span><span>${pct(x.linked, x.came)}</span></div>`).join('')}</div>` : '';
+  return `<section class="funnel"><div class="fttl"><h2>Funnel</h2><nav>${FUNNEL_PERIODS.map(([d, l]) => `<a class="chip" aria-pressed="${d === days}" href="/admin?days=${d}">${l}</a>`).join('')}</nav></div>
+<p class="muted">People who first came ${days ? `in the ${days === 1 ? 'last 24 hours' : `last ${days} days`}` : 'ever'}, one per browser. Crawlers, link previews and your own browser are left out.${f.since ? ` Counting since ${new Date(f.since).toISOString().slice(0, 10)}.` : ' Counting starts with the next visit.'}</p>
+<div class="fsteps">
+${step('came to the site', f.came, 'one per browser')}
+${step('clicked “Link my WhatsApp”', f.clicked, `${pct(f.clicked, f.came)} of those who came · ${f.came - f.clicked} left without clicking`)}
+${step('linked WhatsApp', f.linked, `${pct(f.linked, f.clicked)} of those who clicked · ${f.clicked - f.linked} stopped at the QR / code`)}
+</div>
+<div class="fbreaks">${rows('By source', f.bySource)}${rows('By device', f.byDevice)}</div>
+</section>`;
+}
+function adminPage(o, nonce, days = 30) {
   const byCode = new Map(o.tenants.map((t) => [t.inviteCode, t]));
   const byId = new Map(o.tenants.map((t) => [t.id, t]));
   const rank = (t) => (t.ready ? 0 : t.linkedAt ? 1 : 2);
@@ -385,7 +441,7 @@ function adminPage(o, nonce) {
   const all = ts.map((t) => spend(t, rate));
   const allMin = all.reduce((a, x) => a + x.meteredMin + x.earlierMin, 0), allUsd = all.reduce((a, x) => a + x.usd + x.earlierUsd, 0);
   const tile = (label, big, small = '') => `<div class="tile"><small>${label}</small><b>${big}</b> <span>${small}</span></div>`;
-  return `${nonceStyle(nonce, ADMIN_CSS)}<div class="wrap adm"><h1 class="small">Accounts</h1>
+  return `${nonceStyle(nonce, ADMIN_CSS)}<div class="wrap adm"><h1 class="small">Admin</h1>
 <div class="tiles">
 ${tile('Connected', o.connected, `of ${o.accounts} · cap ${o.max}`)}
 ${tile('Transcribed', ts.reduce((n, t) => n + (t.totals?.own || 0) + (t.totals?.others || 0), 0), 'recordings, all accounts')}
@@ -396,9 +452,11 @@ ${tile('Need attention', errors)}
 ${tile('Audio today', o.budget.serverMinutesToday, `${o.budget.serverDailyMinutes ? `/ ${o.budget.serverDailyMinutes} ` : ''}min${o.budget.perAccountDailyMinutes ? ` · ${o.budget.perAccountDailyMinutes}/account` : ''}`)}
 ${tile('Storage', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</span>' : 'OK', 'data volume')}
 </div>
+${funnelPanel(funnel(days, o.tenants), days)}
+<h2 class="sect">Accounts</h2>
 <div class="adbar"><input type="text" id="q" placeholder="Search name, number, id, group" autocomplete="off">
 <button class="chip" data-f="all" aria-pressed="true">All</button><button class="chip" data-f="ok" aria-pressed="false">Connected</button><button class="chip" data-f="bad" aria-pressed="false">Need attention</button><button class="chip" data-f="wait" aria-pressed="false">Waiting</button></div>
-${ts.map((t) => adminCard(t, byCode, rate, byId)).join('')}
+${cards(ts, byCode, rate, byId)}
 <p class="empty" id="none"${ts.length ? ' hidden' : ''}>${ts.length ? 'No account matches.' : 'No accounts yet.'}</p>
 </div>`;
 }
@@ -459,13 +517,20 @@ export function createWebApp() {
 
   // ---------- returning browsers ----------
   // Public pages give a browser an anonymous id (a random cookie) and count its visits; see visitors.js.
+  // Crawlers and link previews get none: they are not people, and would each look like a new one.
   const track = (req, res) => {
+    const ua = String(req.get('user-agent') || '');
+    if (!ua || BOT_RE.test(ua)) return;
     let id = cookies(req).rv;
     if (!visitors.VISITOR_RE.test(id || '')) { id = visitors.newVisitorId(); res.append('Set-Cookie', `rv=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${req.secure ? '; Secure' : ''}`); }
-    visitors.visit(id);
+    let from = sourceHost(req.get('referer'));
+    if (from === String(req.hostname || '').replace(/^www\./, '')) from = '';
+    visitors.visit(id, { device: deviceOf(ua), from: from || (req.path.startsWith('/i/') ? 'invite' : '') });
   };
+  // The landing page's script reports back: a browser that runs scripts is a person, not a crawler.
+  app.post('/hi', (req, res) => { const id = cookies(req).rv; if (visitors.VISITOR_RE.test(id || '')) visitors.confirm(id); res.status(204).end(); });
   // The landing form also says which site sent the visitor and the browser's time zone.
-  const LANDING_JS = `const f=document.getElementById('start');if(f){const set=(n,v)=>{const i=f.querySelector('[name='+n+']');if(i)i.value=v||'';};
+  const LANDING_JS = `fetch('/hi',{method:'POST'}).catch(()=>{});const f=document.getElementById('start');if(f){const set=(n,v)=>{const i=f.querySelector('[name='+n+']');if(i)i.value=v||'';};
 try{set('tz',Intl.DateTimeFormat().resolvedOptions().timeZone);}catch{}
 try{const r=document.referrer&&new URL(document.referrer);if(r&&r.host!==location.host)set('from',r.origin);}catch{}}`;
 
@@ -571,7 +636,7 @@ ${FOOT}`, { wide: true, nav: NAV })));
 <p>Any paid plan pays for the transcription: the minutes of audio turned into text, and the model doing it. It is never a charge for WhatsApp, for access to WhatsApp, or for any WhatsApp feature. Those are free from WhatsApp, and ${esc(PRODUCT_NAME)} does not sell or resell them. A recording that cannot be transcribed is not counted.</p></section>
 <section><h3>What we keep</h3>
 <p>Your WhatsApp session keys. Your settings: which chats are on or off, the language, the names you taught it. The display names of chats and people it has seen, so it can credit a speaker. A short-lived fingerprint of each recording (a hash, not the audio), so a forwarded recording can be matched to its chat. The text of a recording stays in the server&#39;s memory for up to an hour, never on disk, so forwarding the same recording doesn&#39;t transcribe it twice.</p>
-<p>When you sign up: the network address it came from, a rough location (from your browser&#39;s language and time zone), the kind of device and browser, and the site that sent you, if any. Only the operator sees these, to spot abuse and to know how people find ${esc(PRODUCT_NAME)}, and they are deleted with your account. The site&#39;s pages also set a cookie holding a random number, to tell a returning browser from a new one: it counts visits and sign-ups, holds nothing else, and is forgotten after six months without a visit.</p>
+<p>When you sign up: the network address it came from, a rough location (from your browser&#39;s language and time zone), the kind of device and browser, and the site that sent you, if any. Only the operator sees these, to spot abuse and to know how people find ${esc(PRODUCT_NAME)}, and they are deleted with your account. The site&#39;s pages also set a cookie holding a random number, to tell a returning browser from a new one: we note the kind of device and the referring site of its first visit, count its visits and sign-ups, and forget it after six months without a visit. It holds nothing else.</p>
 <p>Recordings are deleted right after they become text. The one exception: if you explicitly opt in to help improve the product, your recordings and their text are kept for a limited time and then deleted automatically, and what the service did with each one (the text, who a dictated message was matched to, what was sent) is written to the server log so a bad result can be explained. That is off unless you ask for it. Otherwise message text and transcripts are not stored. They exist only in your WhatsApp.</p></section>
 <section><h3>What passes through</h3>
 <p>As a linked device, every message on your account passes through this server in transit, as it would through WhatsApp Web. Only voice notes and videos in allowed chats are processed. The rest is dropped immediately. Audio, the text and any names in it go to model providers (OpenAI, Groq) under API terms that don&#39;t use your data for training. Server logs hold counts, durations and error codes, never message text, transcripts or names.</p></section>
@@ -734,7 +799,7 @@ tick();` }));
       const want = Buffer.from(ADMIN_PASSWORD);
       ok = given.length === want.length && timingSafeEqual(given, want);
     }
-    if (ok) return next();
+    if (ok) { const v = cookies(req).rv; if (visitors.VISITOR_RE.test(v || '')) visitors.markStaff(v); return next(); }
     adminFailLimiter.hit(req.ip);
     console.warn(`🔐 admin sign-in failed from ${req.ip} (${String(req.get('x-forwarded-for') || '').split(',').length} forwarded hop(s))`);
     res.set('WWW-Authenticate', `Basic realm="${PRODUCT_NAME} admin"`); res.status(401).send('Authentication required');
@@ -844,8 +909,8 @@ tick();` }));
     registry.rotateKey(t);
     res.json({ id: t.id, label: t.label, link: `${req.protocol}://${req.get('host')}/link/${t.id}?k=${t.manageKey}` });
   });
-  app.get('/admin', adminAuth, (_req, res) => {
-    res.type('html').send(page(res, `${PRODUCT_NAME} · admin`, adminPage(overview(), res.locals.nonce), { wide: true, nav: '<a class="navlink" href="/admin.json">JSON</a>', poll: ADMIN_JS }));
+  app.get('/admin', adminAuth, (req, res) => {
+    res.type('html').send(page(res, `${PRODUCT_NAME} · admin`, adminPage(overview(), res.locals.nonce, FUNNEL_PERIODS.some(([d]) => String(d) === req.query.days) ? Number(req.query.days) : 30), { wide: true, nav: '<a class="navlink" href="/admin.json">JSON</a>', poll: ADMIN_JS }));
   });
 
   // Liveness only. Counts and details are behind the admin password.

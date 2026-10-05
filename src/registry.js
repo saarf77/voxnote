@@ -11,6 +11,7 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, rename
 import { join } from 'node:path';
 import { dataDir } from './paths.js';
 import { Tenant } from './tenant.js';
+import * as visitors from './visitors.js';
 
 export const tenantsDir = join(dataDir, 'tenants');
 export const MAX_TENANTS = Number(process.env.MAX_TENANTS ?? 50);
@@ -90,7 +91,7 @@ function creditReferrer(t) {
 
 // What an account can ask of the registry: credit its inviter, and erase itself ("leave" in WhatsApp).
 function wire(t) {
-  t.onFirstLink = creditReferrer;
+  t.onFirstLink = (me) => { creditReferrer(me); const v = signupOf(me)?.visitor; if (v) visitors.markLinked(v); };
   t.onLeave = (me) => remove(me.id).catch((e) => console.warn(`${me.tag} leave failed:`, e.message));
 }
 
