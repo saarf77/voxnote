@@ -25,6 +25,7 @@ import { LOGO_SVG, LOGO_DATA_URI } from './logo.js';
 import { normalizePhone, COUNTRIES, countryFromLanguage } from './pairing.js';
 import { speechPerMinute } from './cost.js';
 import * as visitors from './visitors.js';
+import { HE, landingHe, howHe, privacyHe } from './site-he.js';
 
 const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
 const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
@@ -59,6 +60,17 @@ function guessLanguage(acceptLanguage = '') {
   const first = String(acceptLanguage).split(',')[0]?.trim().toLowerCase().split('-')[0] || '';
   return LANGUAGES.some(([v]) => v && v === first) ? first : '';
 }
+// The site's language. Hebrew for a browser whose first language is Hebrew (the device's language,
+// not where it is); everyone else gets English. ?lang=he|en switches and is remembered in a cookie.
+const SITE_LANGS = new Set(['he', 'en']);
+function siteLang(req) {
+  const c = cookies(req).lang;
+  if (SITE_LANGS.has(c)) return c;
+  const first = String(req.get('accept-language') || '').split(',')[0].trim().toLowerCase();
+  return /^(he|iw)\b/.test(first) ? 'he' : 'en';
+}
+/** Whether Hebrew is among the browser's languages at all: then English pages offer it. */
+const knowsHebrew = (req) => /(^|,)\s*(he|iw)\b/i.test(String(req.get('accept-language') || ''));
 const mark = `<a class="mark" href="/">${LOGO_SVG}<span>${esc(PRODUCT_NAME)}</span></a>`;
 // A voice note and its text, drawn as a chat — the product in one glance.
 const WAVE_SVG = `<svg class="wave" width="130" height="22" viewBox="0 0 130 22" aria-hidden="true">${[6, 10, 16, 8, 20, 12, 7, 14, 18, 9, 5, 13, 17, 11, 6, 15, 19, 8, 12, 7, 16, 10, 5, 9, 14, 6].map((h, i) => `<rect x="${i * 5}" y="${(22 - h) / 2}" width="3" height="${h}" rx="1.5" fill="currentColor"/>`).join('')}</svg>`;
@@ -86,11 +98,27 @@ const cookies = (req) => Object.fromEntries(String(req.headers.cookie || '').spl
 const setSession = (req, res, t) => res.append('Set-Cookie', `rl=${t.id}.${t.manageKey}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${req.secure ? '; Secure' : ''}`);
 const clearSession = (req, res) => res.append('Set-Cookie', `rl=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${req.secure ? '; Secure' : ''}`);
 
+const TAGLINE_HE = 'תדברו חופשי. כל הודעה קולית בוואטסאפ מופיעה כטקסט נקי, ממש מתחתיה.';
+// Right to left, for the Hebrew site: the chat bubbles, quotes and fields mirror; phone numbers and codes stay left to right.
+const RTL_CSS = `[dir=rtl] body{font-family:Geist,system-ui,-apple-system,"Segoe UI","Arial Hebrew",Arial,sans-serif}
+[dir=rtl]{--disp:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI","Arial Hebrew",Arial,sans-serif}
+[dir=rtl] h1,[dir=rtl] h2,[dir=rtl] h3{letter-spacing:-.015em}
+[dir=rtl] .chat{text-align:right}[dir=rtl] .b.in{border-radius:20px 8px 20px 20px;padding:12px 12px 12px 16px}[dir=rtl] .b.out{border-radius:8px 20px 20px 20px}
+[dir=rtl] .b .quo{border-left:0;border-right:3px solid #1fa855}
+[dir=rtl] .say .me{border-radius:8px 22px 22px 22px}[dir=rtl] .say .them{border-radius:22px 8px 22px 22px}
+[dir=rtl] .mini .me{border-radius:6px 18px 18px 18px}[dir=rtl] .mini .bot{border-radius:18px 6px 18px 18px}[dir=rtl] .mini .q{border-left:0;border-right:4px solid #0a7a43}
+[dir=rtl] select{padding-right:14px;padding-left:40px;background-position:left 14px center}
+[dir=rtl] .howto li{padding:4px 44px 0 0}[dir=rtl] .howto li::before{left:auto;right:0}
+[dir=rtl] td,[dir=rtl] th{text-align:right}
+[dir=rtl] .mini small{font-family:inherit;letter-spacing:0;font-size:13px}[dir=rtl] .tel input::placeholder{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;letter-spacing:0}
+.tel,.code{direction:ltr}`;
+
 function page(res, title, body, { poll = null, wide = false, nav = '' } = {}) {
   const nonce = res.locals.nonce;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  const he = res.locals.lang === 'he', TAG = he ? TAGLINE_HE : TAGLINE;
+  return `<!doctype html><html lang="${he ? 'he' : 'en'}" dir="${he ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#faf7f2"><meta name="color-scheme" content="light"><title>${esc(title)}</title>
-<meta name="description" content="${esc(TAGLINE)}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(TAGLINE)}"><meta property="og:type" content="website">
+<meta name="description" content="${esc(TAG)}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(TAG)}"><meta property="og:type" content="website">
 <link rel="icon" href="${LOGO_DATA_URI}"><link rel="apple-touch-icon" href="${LOGO_DATA_URI}">
 <style nonce="${nonce}">
 @font-face{font-family:"Bricolage Grotesque";font-weight:700 800;font-stretch:100%;font-display:swap;src:url(/fonts/bricolage.woff2) format("woff2")}
@@ -209,6 +237,7 @@ table{border-collapse:collapse;font-size:14px;white-space:nowrap}th,td{padding:4
 .close{padding:140px 0}.close .wrap{gap:40px}
 .foot{flex-direction:row;align-items:center;justify-content:space-between}
 }
+${he ? RTL_CSS : ''}
 </style></head><body><header class="nav wrap${wide ? '' : ' narrow'}">${mark}${nav}</header><main${wide ? '' : ' class="wrap narrow"'}>${body}</main>${poll ? `<script nonce="${nonce}">document.addEventListener('DOMContentLoaded',()=>{${poll}\n});</script>` : ''}</body></html>`;
 }
 
@@ -495,6 +524,13 @@ export function createWebApp() {
     });
     if (req.secure) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     if (/^\/(link|api|admin|unlink)/.test(req.path)) res.set('Cache-Control', 'no-store');
+    res.locals.lang = siteLang(req);
+    res.set('Vary', 'Accept-Language, Cookie');
+    // The footer's language link: remember the choice, then show the same page without the query.
+    if (req.method === 'GET' && SITE_LANGS.has(req.query.lang)) {
+      res.append('Set-Cookie', `lang=${req.query.lang}; Path=/; SameSite=Lax; Max-Age=31536000${req.secure ? '; Secure' : ''}`);
+      return res.redirect(303, req.path);
+    }
     next();
   });
   // Cross-site POSTs are refused: a browser always sends Origin (or Sec-Fetch-Site) on them.
@@ -542,9 +578,22 @@ try{const r=document.referrer&&new URL(document.referrer);if(r&&r.host!==locatio
   const NAV = '<a class="navlink" href="/how">How it works</a>';
   const FOOT = `<footer class="foot wrap"><p>${esc(PRODUCT_NAME)} is not made by WhatsApp. It&#39;s an unofficial client, so <a href="/privacy">read the risks</a> first.</p><nav><a href="/how">How it works</a><a href="/privacy">Privacy &amp; terms</a><a href="${esc(REPO_URL)}">Open source</a></nav></footer>`;
   const CLOSE = '<section class="close"><div class="wrap"><h2>Go on. Ramble.</h2><a class="cta" href="/#start">Link my WhatsApp</a></div></section>';
+  // The same fragments in the page's language. English pages offer Hebrew only to a browser that has it.
+  const isHe = (res) => res.locals.lang === 'he';
+  const navFor = (res) => (isHe(res) ? `<a class="navlink" href="/how">${HE.nav}</a>` : NAV);
+  const closeFor = (res) => (isHe(res) ? `<section class="close"><div class="wrap"><h2>${HE.close.h}</h2><a class="cta" href="/#start">${HE.close.cta}</a></div></section>` : CLOSE);
+  const footFor = (req, res) => {
+    const other = isHe(res) ? '<a href="?lang=en" lang="en">English</a>' : knowsHebrew(req) ? '<a href="?lang=he" lang="he" dir="rtl">עברית</a>' : '';
+    if (!isHe(res)) return other ? FOOT.replace('</nav></footer>', `${other}</nav></footer>`) : FOOT;
+    const n = HE.footNav;
+    return `<footer class="foot wrap"><p>${HE.foot(esc(PRODUCT_NAME))}</p><nav><a href="/how">${n.how}</a><a href="/privacy">${n.privacy}</a><a href="${esc(REPO_URL)}">${n.oss}</a>${other}</nav></footer>`;
+  };
+  /** A small page in the page's language: [title, text] pairs for each. */
+  const small = (res, en, he, extra = '') => { const [t, p] = isHe(res) ? he : en; return page(res, t, `<h1 class="small">${t}</h1><p>${p}</p>${extra}`); };
   const landing = (req, res, invitedBy = null) => {
     track(req, res);
     refreshStars();
+    if (isHe(res)) return res.type('html').send(page(res, PRODUCT_NAME, landingHe({ esc, NAME: esc(PRODUCT_NAME), WAVE_SVG, INVITE_CODE, invitedBy, REPO_URL, CODE_SVG, ghExtra: stars == null ? '' : `<span>${STAR_SVG}${compact(stars)}</span>`, close: closeFor(res), foot: footFor(req, res) }), { wide: true, nav: navFor(res), poll: LANDING_JS }));
     res.type('html').send(page(res, PRODUCT_NAME, `
 <section class="hero wrap">
 ${invitedBy ? '<span class="invited">A friend invited you.</span>' : ''}
@@ -572,7 +621,7 @@ ${DEMO}
 <a class="gh" href="${esc(REPO_URL)}"><span>${CODE_SVG}View on GitHub</span>${stars == null ? '' : `<span>${STAR_SVG}${compact(stars)}</span>`}</a>
 </div></section>
 ${CLOSE}
-${FOOT}`, { wide: true, nav: NAV, poll: LANDING_JS }));
+${footFor(req, res)}`, { wide: true, nav: NAV, poll: LANDING_JS }));
   };
 
   app.get('/', (req, res) => landing(req, res, cookies(req).rref || null));
@@ -586,12 +635,14 @@ ${FOOT}`, { wide: true, nav: NAV, poll: LANDING_JS }));
 
   // How it works: the setup, what happens on its own, and everything the control group can do,
   // each command shown as the WhatsApp exchange it really is.
-  const voice = (dur, fwd = false) => `<div class="me vn">${fwd ? '<em>Forwarded</em>' : ''}<svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.2v13.6L13 8z" fill="currentColor"/></svg>${WAVE_SVG}<span>${dur}</span></div>`;
+  const voice = (dur, fwd = false, label = 'Forwarded') => `<div class="me vn">${fwd ? `<em>${label}</em>` : ''}<svg width="14" height="16" viewBox="0 0 14 16" aria-hidden="true"><path d="M1 1.2v13.6L13 8z" fill="currentColor"/></svg>${WAVE_SVG}<span>${dur}</span></div>`;
   const mini = (where, bubbles) => `<div class="mini" role="img" aria-label="An example exchange in WhatsApp"><small>${where}</small>${bubbles}</div>`;
   const NAME = esc(PRODUCT_NAME);
   // A reply, the way WhatsApp draws one: the quoted message sits inside the bubble, above the answer.
   const quote = (who, text) => `<span class="q"><b>${who}</b>${text}</span>`;
-  app.get('/how', (req, res) => track(req, res) ?? res.type('html').send(page(res, `${PRODUCT_NAME} · How it works`, `
+  app.get('/how', (req, res) => track(req, res) ?? (isHe(res)
+    ? res.type('html').send(page(res, `${PRODUCT_NAME} · ${HE.title.how}`, howHe({ NAME, mini, voice, quote, DAILY_MINUTES_CAP, close: closeFor(res), foot: footFor(req, res) }), { wide: true, nav: navFor(res) }))
+    : res.type('html').send(page(res, `${PRODUCT_NAME} · How it works`, `
 <section class="howhero wrap"><h1>How it works.</h1><p class="sub">Set it up once. After that, everything happens inside WhatsApp.</p></section>
 <section class="band"><div class="wrap"><ol class="steps long">
 <li><div>Link your WhatsApp.<span>Scan a QR code, or on your phone type in a code. In WhatsApp: Settings, Linked devices, Link a device. Same as WhatsApp Web.</span></div></li>
@@ -626,9 +677,11 @@ ${mini(`${NAME} group`, `<div class="me">leave</div><div class="bot">Unlink <b>$
 <p><b>Text.</b> It lives in your WhatsApp, under the recording. It is never written to our disk.</p>
 </div><p class="intro"><a href="/privacy">Privacy &amp; terms</a> has the details.</p></div></section>
 ${CLOSE}
-${FOOT}`, { wide: true, nav: NAV })));
+${footFor(req, res)}`, { wide: true, nav: NAV }))));
 
-  app.get('/privacy', (req, res) => track(req, res) ?? res.type('html').send(page(res, `${PRODUCT_NAME} · Privacy & terms`, `
+  app.get('/privacy', (req, res) => track(req, res) ?? (isHe(res)
+    ? res.type('html').send(page(res, `${PRODUCT_NAME} · ${HE.title.privacy}`, privacyHe(esc(PRODUCT_NAME))))
+    : res.type('html').send(page(res, `${PRODUCT_NAME} · Privacy & terms`, `
 <h1 class="small">Privacy &amp; terms</h1>
 <div class="legal">
 <section><h3>What ${esc(PRODUCT_NAME)} does</h3>
@@ -638,7 +691,7 @@ ${FOOT}`, { wide: true, nav: NAV })));
 <p>Any paid plan pays for the transcription: the minutes of audio turned into text, and the model doing it. It is never a charge for WhatsApp, for access to WhatsApp, or for any WhatsApp feature. Those are free from WhatsApp, and ${esc(PRODUCT_NAME)} does not sell or resell them. A recording that cannot be transcribed is not counted.</p></section>
 <section><h3>What we keep</h3>
 <p>Your WhatsApp session keys. Your settings: which chats are on or off, the language, the names you taught it. The display names of chats and people it has seen, so it can credit a speaker. A short-lived fingerprint of each recording (a hash, not the audio), so a forwarded recording can be matched to its chat. The text of a recording stays in the server&#39;s memory for up to an hour, never on disk, so forwarding the same recording doesn&#39;t transcribe it twice.</p>
-<p>When you sign up: the network address it came from, a rough location (from your browser&#39;s language and time zone), the kind of device and browser, and the site that sent you, if any. Only the operator sees these, to spot abuse and to know how people find ${esc(PRODUCT_NAME)}, and they are deleted with your account. The site&#39;s pages also set a cookie holding a random number, to tell a returning browser from a new one: we note the kind of device and the referring site of its first visit, count its visits and sign-ups, and forget it after six months without a visit. It holds nothing else.</p>
+<p>When you sign up: the network address it came from, a rough location (from your browser&#39;s language and time zone), the kind of device and browser, and the site that sent you, if any. Only the operator sees these, to spot abuse and to know how people find ${esc(PRODUCT_NAME)}, and they are deleted with your account. The site&#39;s pages also set a cookie holding a random number, to tell a returning browser from a new one: we note the kind of device and the referring site of its first visit, count its visits and sign-ups, and forget it after six months without a visit. It holds nothing else. Another cookie remembers the site&#39;s language, if you picked one.</p>
 <p>Recordings are deleted right after they become text. The one exception: if you explicitly opt in to help improve the product, your recordings and their text are kept for a limited time and then deleted automatically, and what the service did with each one (the text, who a dictated message was matched to, what was sent) is written to the server log so a bad result can be explained. That is off unless you ask for it. Otherwise message text and transcripts are not stored. They exist only in your WhatsApp.</p></section>
 <section><h3>What passes through</h3>
 <p>As a linked device, every message on your account passes through this server in transit, as it would through WhatsApp Web. Only voice notes and videos in allowed chats are processed. The rest is dropped immediately. Audio, the text and any names in it go to model providers (OpenAI, Groq) under API terms that don&#39;t use your data for training. Server logs hold counts, durations and error codes, never message text, transcripts or names.</p></section>
@@ -647,23 +700,23 @@ ${FOOT}`, { wide: true, nav: NAV })));
 <section><h3>Leaving</h3>
 <p>Write <b>leave</b> in your ${esc(PRODUCT_NAME)} group in WhatsApp and confirm with <b>yes</b>. That logs the device out of your WhatsApp and deletes everything about your account here. You can also remove the device in WhatsApp under Linked devices, at any time.</p></section>
 </div>
-<a class="back" href="/">Back home</a>`)));
+<a class="back" href="/">Back home</a>`))));
 
   // ---------- create + link ----------
   app.post('/start', (req, res) => {
-    if (startLimiter.blocked(req.ip)) return res.status(429).type('html').send(page(res, 'Slow down', `<h1 class="small">Slow down</h1><p>Too many attempts from this network. Try again in an hour.</p>`));
+    if (startLimiter.blocked(req.ip)) return res.status(429).type('html').send(small(res, ['Slow down', 'Too many attempts from this network. Try again in an hour.'], HE.slow));
     startLimiter.hit(req.ip);
     if (req.body.consent !== '1') return res.redirect(303, '/');
     if (INVITE_CODE) {
       const given = Buffer.from(String(req.body.invite || '')), want = Buffer.from(INVITE_CODE);
-      if (given.length !== want.length || !timingSafeEqual(given, want)) return res.status(403).type('html').send(page(res, 'Invite needed', `<h1 class="small">Invite needed</h1><p>That invite code isn't right. You need one to join ${esc(PRODUCT_NAME)} for now.</p><a class="back" href="/">Back home</a>`));
+      if (given.length !== want.length || !timingSafeEqual(given, want)) return res.status(403).type('html').send(small(res, ['Invite needed', `That invite code isn't right. You need one to join ${esc(PRODUCT_NAME)} for now.`], [HE.invite[0], HE.invite[1](esc(PRODUCT_NAME))], `<a class="back" href="/">${isHe(res) ? HE.home : 'Back home'}</a>`));
     }
     // Every account starts on auto-detect; the link page has a selector for the rare case it's needed.
     // Who invited them, if they arrived through someone's /i/<code> link.
     const ref = String(req.body.ref || cookies(req).rref || '');
     let t;
     // The welcome in WhatsApp is written in the browser's language when we have it (Hebrew or English).
-    const locale = guessLanguage(req.get('accept-language')) === 'he' ? 'he' : 'en';
+    const locale = res.locals.lang;
     // Who this is, coarsely, for the admin page: the network address, a likely country, the device,
     // where they came from, and whether this browser was here before (see the privacy page).
     const vid = visitors.VISITOR_RE.test(cookies(req).rv || '') ? cookies(req).rv : null;
@@ -679,7 +732,7 @@ ${FOOT}`, { wide: true, nav: NAV })));
       hadAccount: prev && prevKey && prev.manageKey === prevKey ? prev.id : null,
     };
     try { t = registry.create({ language: '', locale, referredBy: ref, signup }); if (vid) visitors.addAccount(vid, t.id); }
-    catch (e) { return res.status(503).type('html').send(page(res, 'Try again soon', `<h1 class="small">Try again soon</h1><p>${esc(e.message)}</p>`)); }
+    catch (e) { return res.status(503).type('html').send(small(res, ['Try again soon', esc(e.message)], HE.busy)); }
     setSession(req, res, t);
     res.append('Set-Cookie', `rref=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${req.secure ? '; Secure' : ''}`);
     res.redirect(303, `/link/${t.id}`);
@@ -698,12 +751,30 @@ ${FOOT}`, { wide: true, nav: NAV })));
     const t = ID_RE.test(id) ? registry.get(id) : null;
     const k = keyFrom(req);
     const ok = t && KEY_RE.test(k) && KEY_RE.test(t.manageKey) && timingSafeEqual(Buffer.from(k), Buffer.from(t.manageKey));
-    if (!ok) { res.status(404).type('html').send(page(res, 'Not found', `<h1 class="small">Not found</h1><p>This link is not valid.</p>`)); return null; }
+    if (!ok) { res.status(404).type('html').send(small(res, ['Not found', 'This link is not valid.'], HE.notFound)); return null; }
     return t;
   }
 
+  // Every string the link page's script draws, in English; site-he.js has the same keys in Hebrew.
+  const LINK_EN = {
+    starting: 'Starting…', linked: 'Linked', youreIn: 'You&#39;re in.',
+    manual: 'One thing first: in WhatsApp, create a group with just you in it and post <code>#transcribe</code> there. That becomes your {p} group.',
+    waiting: 'Your <b>{g}</b> group is waiting at the top of your chats. Record a voice note there and watch its text show up right under it.',
+    openWa: 'Open WhatsApp', helpThere: 'Everything else happens in that group too: write <b>help</b> there.',
+    open1: 'Open WhatsApp and go to <b>Settings</b> (on Android, the <b>&#8942;</b> menu)', open2: 'Tap <b>Linked devices</b>, then <b>Link a device</b>',
+    yourCode: 'Your code.', copy: 'Copy code', copied: 'Copied', withPhone: 'Tap <b>Link with phone number instead</b>', paste: 'Paste the code',
+    codeNote: 'WhatsApp may also send a notification asking for the code; tapping it is a shortcut. The code is good for a few minutes, and a fresh one appears here when it expires.',
+    gettingCode: 'Getting you a code…', withCode: 'Link with a code.', yourNumber: 'Your WhatsApp number', phonePh: 'Phone number', getCode: 'Get my code',
+    codeFor: 'The code will be for <b>{n}</b>', country: 'Country',
+    scan: 'Scan this.', point: 'Point your phone at this code',
+    rescan: 'Your phone said it couldn&#39;t link? Scan this one again. WhatsApp changed the code after the first scan.', refreshes: 'The code refreshes on its own.',
+    toQr: 'Scan a QR code instead', toCode: 'Link with a code instead',
+    loggedOut: 'Logged out', loggedOutNote: 'WhatsApp logged this device out. A new code is coming…', reconnecting: 'Reconnecting…', preparing: 'Preparing your code…',
+    unlink: 'Unlink and erase everything', orLeave: 'Or write <b>leave</b> in your {p} group.', confirm: 'Unlink WhatsApp and erase this account?', privacy: 'Privacy &amp; terms',
+  };
   app.get('/link/:id', (req, res) => {
     const t = auth(req, res); if (!t) return;
+    const S = isHe(res) ? HE.link : LINK_EN;
     // A key in the URL becomes a cookie and disappears from the address bar.
     if (req.query.k != null) { setSession(req, res, t); return res.redirect(303, `/link/${t.id}`); }
     // A phone cannot scan its own screen: there the default is a code, on a desktop the QR. Either page links to the other.
@@ -714,35 +785,38 @@ ${FOOT}`, { wide: true, nav: NAV })));
     const firstLang = String(req.get('accept-language') || '').split(',')[0].trim().toLowerCase();
     const country = firstLang && !firstLang.startsWith('en') ? countryFromLanguage(firstLang) : '';
     const region = countryFromLanguage(req.get('accept-language'));
-    res.type('html').send(page(res, `${PRODUCT_NAME} · Link your WhatsApp`, `
+    res.type('html').send(page(res, `${PRODUCT_NAME} · ${isHe(res) ? HE.title.link : 'Link your WhatsApp'}`, `
 <canvas id="fx" hidden aria-hidden="true"></canvas>
-<div id="box"><span class="pill"><i></i>Starting…</span></div>
+<div id="box"><span class="pill"><i></i>${S.starting}</span></div>
 <form method="post" action="/link/${t.id}/qr" id="toqr" hidden></form>
 <div class="tools">
-<form method="post" action="/unlink/${t.id}" id="unlink"><button class="quiet" type="submit">Unlink and erase everything</button><span class="muted">Or write <b>leave</b> in your ${esc(PRODUCT_NAME)} group.</span></form>
+<form method="post" action="/unlink/${t.id}" id="unlink"><button class="quiet" type="submit">${S.unlink}</button><span class="muted">${S.orLeave.replace('{p}', esc(PRODUCT_NAME))}</span></form>
 </div>
-<a class="back" href="/privacy">Privacy &amp; terms</a>`, { poll: `
+<a class="back" href="/privacy">${S.privacy}</a>`, { poll: `
+const S=${JSON.stringify(S)};const fill=(x,k,v)=>x.split('{'+k+'}').join(v);
+// Country names in the page's language when the browser can name them.
+const regionName=(()=>{try{const d=new Intl.DisplayNames([document.documentElement.lang],{type:'region'});return (iso,fb)=>d.of(iso)||fb}catch(e){return (iso,fb)=>fb}})();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const box=()=>document.getElementById('box');const product=${JSON.stringify(PRODUCT_NAME)};
 // Into the app itself, where the group is; on a computer, WhatsApp Web.
 const openWa=${JSON.stringify(onPhone ? 'whatsapp://' : 'https://web.whatsapp.com/')};
 let via='${via}',shown='';
-const open='<li>Open WhatsApp and go to <b>Settings</b> (on Android, the <b>&#8942;</b> menu)</li><li>Tap <b>Linked devices</b>, then <b>Link a device</b></li>';
+const open='<li>'+S.open1+'</li><li>'+S.open2+'</li>';
 const countries=${JSON.stringify(COUNTRIES)};
 const flag=(iso)=>String.fromCodePoint(...[...iso].map(ch=>127397+ch.charCodeAt(0)));
 const tz=(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(e){return ''}})();
 const home=(countries.find(c=>c[0]==='${country}')||countries.find(c=>c[3].includes(tz))||countries.find(c=>c[0]==='${region}')||countries.find(c=>c[0]===(navigator.language||'').split('-')[1])||countries.find(c=>c[0]==='US'))[0];
 // The same rule as the server: + or 00 means as typed; otherwise the country code goes in front of the local form.
 function intl(v,cc){const raw=String(v||'').trim();let d=raw.replace(/\\D/g,'');if(raw.startsWith('+')){}else if(d.startsWith('00'))d=d.slice(2);else if(cc&&!(d.startsWith(cc)&&d.length-cc.length>=8&&!d.startsWith('0')))d=cc+(cc==='39'?d:d.replace(/^0/,''));return /^[1-9]\\d{7,14}$/.test(d)?d:null}
-function phoneForm(){const opts=countries.map(c=>'<option value="'+c[0]+'"'+(c[0]===home?' selected':'')+'>'+flag(c[0])+' '+esc(c[2])+' (+'+c[1]+')</option>').join('');const h=countries.find(c=>c[0]===home);return '<h1>Link with a code.</h1><form class="phone" method="post" action="/link/${t.id}/code"><label for="phone">Your WhatsApp number</label><div class="tel"><div class="cc"><em id="ccflag">'+flag(h[0])+'</em><span id="ccdial">+'+h[1]+'</span><svg width="12" height="8" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"/></svg><select id="ccsel" aria-label="Country">'+opts+'</select></div><input type="hidden" name="cc" id="cc" value="'+h[1]+'"><input type="tel" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="'+(h[0]==='IL'?'050 123 4567':'Phone number')+'" required></div><p class="hint" id="as"></p><button class="cta" type="submit">Get my code</button></form>';}
-function syncPhone(){const sel=document.getElementById('ccsel');if(!sel)return;const c=countries.find(x=>x[0]===sel.value);document.getElementById('ccflag').textContent=flag(c[0]);document.getElementById('ccdial').textContent='+'+c[1];document.getElementById('cc').value=c[1];const ph=document.getElementById('phone');ph.placeholder=c[0]==='IL'?'050 123 4567':'Phone number';const d=intl(ph.value,c[1]);const shown=d?'+'+c[1]+' '+d.slice(c[1].length).replace(/(\\d{2,3})(\\d{3})(\\d{4})$/,'$1 $2 $3'):'';document.getElementById('as').innerHTML=d?'The code will be for <b>'+esc(d.startsWith(c[1])?shown:'+'+d)+'</b>':'';}
+function phoneForm(){const opts=countries.map(c=>'<option value="'+c[0]+'"'+(c[0]===home?' selected':'')+'>'+flag(c[0])+' '+esc(regionName(c[0],c[2]))+' (+'+c[1]+')</option>').join('');const h=countries.find(c=>c[0]===home);return '<h1>'+S.withCode+'</h1><form class="phone" method="post" action="/link/${t.id}/code"><label for="phone">'+S.yourNumber+'</label><div class="tel"><div class="cc"><em id="ccflag">'+flag(h[0])+'</em><span id="ccdial">+'+h[1]+'</span><svg width="12" height="8" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2"/></svg><select id="ccsel" aria-label="'+S.country+'">'+opts+'</select></div><input type="hidden" name="cc" id="cc" value="'+h[1]+'"><input type="tel" id="phone" name="phone" inputmode="tel" autocomplete="tel" placeholder="'+(h[0]==='IL'?'050 123 4567':S.phonePh)+'" required></div><p class="hint" id="as"></p><button class="cta" type="submit">'+S.getCode+'</button></form>';}
+function syncPhone(){const sel=document.getElementById('ccsel');if(!sel)return;const c=countries.find(x=>x[0]===sel.value);document.getElementById('ccflag').textContent=flag(c[0]);document.getElementById('ccdial').textContent='+'+c[1];document.getElementById('cc').value=c[1];const ph=document.getElementById('phone');ph.placeholder=c[0]==='IL'?'050 123 4567':S.phonePh;const d=intl(ph.value,c[1]);const shown=d?'+'+c[1]+' '+d.slice(c[1].length).replace(/(\\d{2,3})(\\d{3})(\\d{4})$/,'$1 $2 $3'):'';document.getElementById('as').innerHTML=d?fill(S.codeFor,'n',esc(d.startsWith(c[1])?shown:'+'+d)):'';}
 document.addEventListener('input',e=>{if(e.target.id==='phone')syncPhone();});
 document.addEventListener('change',e=>{if(e.target.id==='ccsel')syncPhone();});
-async function copyCode(code,btn){try{await navigator.clipboard.writeText(code);}catch(e){const ta=document.createElement('textarea');ta.value=code;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(_){}ta.remove();}if(btn){btn.textContent='Copied';setTimeout(()=>{btn.textContent='Copy code';},2000);}}
+async function copyCode(code,btn){try{await navigator.clipboard.writeText(code);}catch(e){const ta=document.createElement('textarea');ta.value=code;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(_){}ta.remove();}if(btn){btn.textContent=S.copied;setTimeout(()=>{btn.textContent=S.copy;},2000);}}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if(!b)return;e.preventDefault();copyCode(b.dataset.copy,document.getElementById('copybtn'));});
-const swap=(to)=>'<a href="#" class="swap" data-to="'+to+'">'+(to==='qr'?'Scan a QR code instead':'Link with a code instead')+'</a>';
+const swap=(to)=>'<a href="#" class="swap" data-to="'+to+'">'+(to==='qr'?S.toQr:S.toCode)+'</a>';
 document.addEventListener('click',e=>{const a=e.target.closest('a.swap');if(!a)return;e.preventDefault();if(a.dataset.to==='qr'&&document.body.dataset.code==='1'){document.getElementById('toqr').submit();return;}via=a.dataset.to;shown='';tick();});
-document.getElementById('unlink').addEventListener('submit',e=>{if(!confirm('Unlink WhatsApp and erase this account?'))e.preventDefault();});
+document.getElementById('unlink').addEventListener('submit',e=>{if(!confirm(S.confirm))e.preventDefault();});
 // Confetti, once, the moment the link goes through — not for someone coming back to a linked account.
 let wasLinked=null;
 function confetti(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;const c=document.getElementById('fx'),x=c.getContext('2d');c.hidden=false;const W=c.width=innerWidth,H=c.height=innerHeight;const cols=['#25d366','#121212','#d9fdd3','#faf7f2','#1fa855'];const ps=Array.from({length:160},()=>({x:W/2+(Math.random()-.5)*W*.3,y:H*.35,vx:(Math.random()-.5)*14,vy:-Math.random()*16-4,r:Math.random()*Math.PI,vr:(Math.random()-.5)*.3,w:6+Math.random()*6,h:8+Math.random()*10,c:cols[Math.random()*cols.length|0]}));const t0=performance.now();(function f(t){const k=(t-t0)/1000;x.clearRect(0,0,W,H);for(const p of ps){p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.vx*=.99;p.r+=p.vr;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.globalAlpha=Math.max(0,1-Math.max(0,k-2)/1);x.fillStyle=p.c;x.fillRect(-p.w/2,-p.h/2,p.w,p.h);x.restore();}if(k<3.2)requestAnimationFrame(f);else{c.hidden=true;}})(t0);}
@@ -755,13 +829,13 @@ function render(s){
  wasLinked=s.mode==='connected';
  // The same picture is not redrawn: a number being typed must survive the next poll.
  const key=[s.mode,s.pairByCode,s.pairingCode,via==='qr'&&!s.pairByCode&&s.qr?s.qr.slice(-40):'',via,s.rescan,s.controlGroup,s.needsManualGroup].join('|');if(key===shown)return;shown=key;
- if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>Linked</span><h1>You\\'re in.</h1>'+(s.needsManualGroup?'<p class="go">One thing first: in WhatsApp, create a group with just you in it and post <code>#transcribe</code> there. That becomes your '+esc(product)+' group.</p>':'<p class="go">Your <b>'+esc(s.controlGroup||product)+'</b> group is waiting at the top of your chats. Record a voice note there and watch its text show up right under it.</p>')+'<a class="cta" href="'+openWa+'">Open WhatsApp</a><p class="muted">Everything else happens in that group too: write <b>help</b> there.</p>';}
- else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>Your code.</h1><button class="code" type="button" data-copy="'+esc(c)+'" aria-label="Copy the code">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</button><button class="cta" type="button" id="copybtn" data-copy="'+esc(c)+'">Copy code</button><ol class="howto">'+open+'<li>Tap <b>Link with phone number instead</b></li><li>Paste the code</li></ol><p class="muted">WhatsApp may also send a notification asking for the code; tapping it is a shortcut. The code is good for a few minutes, and a fresh one appears here when it expires.</p>'+swap('qr');}
- else if(s.mode==='qr'&&s.pairByCode){box().innerHTML='<span class="pill"><i></i>Getting you a code…</span>'+swap('qr');}
+ if(s.mode==='connected'){box().innerHTML='<span class="pill ok"><i></i>'+S.linked+'</span><h1>'+S.youreIn+'</h1>'+(s.needsManualGroup?'<p class="go">'+fill(S.manual,'p',esc(product))+'</p>':'<p class="go">'+fill(S.waiting,'g',esc(s.controlGroup||product))+'</p>')+'<a class="cta" href="'+openWa+'">'+S.openWa+'</a><p class="muted">'+S.helpThere+'</p>';}
+ else if(s.mode==='qr'&&s.pairingCode){const c=String(s.pairingCode);box().innerHTML='<h1>'+S.yourCode+'</h1><button class="code" type="button" data-copy="'+esc(c)+'" aria-label="'+S.copy+'">'+esc(c.slice(0,4))+'<i>-</i>'+esc(c.slice(4))+'</button><button class="cta" type="button" id="copybtn" data-copy="'+esc(c)+'">'+S.copy+'</button><ol class="howto">'+open+'<li>'+S.withPhone+'</li><li>'+S.paste+'</li></ol><p class="muted">'+S.codeNote+'</p>'+swap('qr');}
+ else if(s.mode==='qr'&&s.pairByCode){box().innerHTML='<span class="pill"><i></i>'+S.gettingCode+'</span>'+swap('qr');}
  else if(s.mode==='qr'&&via==='code'){box().innerHTML=phoneForm()+swap('qr');}
- else if(s.qr){box().innerHTML='<h1>Scan this.</h1><ol class="howto">'+open+'<li>Point your phone at this code</li></ol><img class="qr" src="'+esc(s.qr)+'" alt="QR code">'+(s.rescan?'<p class="go center">Your phone said it couldn\\'t link? Scan this one again. WhatsApp changed the code after the first scan.</p>':'<p class="muted center">The code refreshes on its own.</p>')+swap('code');}
- else if(s.mode==='logged_out'){box().innerHTML='<span class="pill"><i></i>Logged out</span><p>WhatsApp logged this device out. A new code is coming…</p>';}
- else{box().innerHTML='<span class="pill"><i></i>'+(s.mode==='reconnecting'?'Reconnecting…':'Preparing your code…')+'</span>';}
+ else if(s.qr){box().innerHTML='<h1>'+S.scan+'</h1><ol class="howto">'+open+'<li>'+S.point+'</li></ol><img class="qr" src="'+esc(s.qr)+'" alt="QR code">'+(s.rescan?'<p class="go center">'+S.rescan+'</p>':'<p class="muted center">'+S.refreshes+'</p>')+swap('code');}
+ else if(s.mode==='logged_out'){box().innerHTML='<span class="pill"><i></i>'+S.loggedOut+'</span><p>'+S.loggedOutNote+'</p>';}
+ else{box().innerHTML='<span class="pill"><i></i>'+(s.mode==='reconnecting'?S.reconnecting:S.preparing)+'</span>';}
 }
 tick();` }));
   });
@@ -773,7 +847,7 @@ tick();` }));
     const t = auth(req, res); if (!t) return;
     // The number as typed (local, or with + / 00) and the country picked next to it.
     const phone = normalizePhone(req.body.phone, req.body.cc);
-    if (!phone) return res.status(400).type('html').send(page(res, 'Not a number', `<h1 class="small">That doesn&#39;t look like a number.</h1><p>Type your WhatsApp number the way you&#39;d give it to a friend, and check the country next to it.</p><a class="back" href="/link/${t.id}?via=code">Back</a>`));
+    if (!phone) return res.status(400).type('html').send(small(res, ['That doesn&#39;t look like a number.', 'Type your WhatsApp number the way you&#39;d give it to a friend, and check the country next to it.'], HE.notNumber, `<a class="back" href="/link/${t.id}?via=code">${isHe(res) ? HE.back : 'Back'}</a>`));
     await t.requestPairingCode(phone);
     res.redirect(303, `/link/${t.id}`);
   });
@@ -787,6 +861,7 @@ tick();` }));
     const t = auth(req, res); if (!t) return;
     const r = await registry.remove(t.id);
     clearSession(req, res);
+    if (isHe(res)) return res.type('html').send(page(res, 'נעלם', `${HE.gone(esc(PRODUCT_NAME), r?.loggedOut)}<a class="back" href="/">${HE.again}</a>`));
     res.type('html').send(page(res, 'Unlinked', `<h1 class="small">Gone.</h1><p>Nothing of yours is left here.${r?.loggedOut ? ' The device was logged out of your WhatsApp.' : ' WhatsApp did not confirm the logout, so remove the device yourself under <b>WhatsApp → Linked devices</b>.'} The <b>${esc(PRODUCT_NAME)}</b> group stays in your WhatsApp; delete it whenever you like.</p><a class="back" href="/">Start over</a>`));
   });
 
