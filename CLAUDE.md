@@ -1,5 +1,14 @@
 # Working on Ramble
 
+## ⛔ Never deploy without asking Tomer first
+
+Every deploy restarts the server: every linked account drops and reconnects, and
+recordings that arrive meanwhile wait or are lost. That is downtime for real users.
+So **no `railway up` (or any other deploy) after a change, ever, unless Tomer said
+yes to that deploy in the conversation.** Deploys happen at night, when he asks for
+one. Commit and push as usual; then say what is waiting to go out and stop there.
+
+
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first; its ground rules bind agents too.
 
 ## Real data never enters the repository
