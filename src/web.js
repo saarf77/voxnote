@@ -116,7 +116,7 @@ main.narrow{padding-bottom:40px}main.narrow>p{margin:12px 0;color:var(--mute)}ma
 .cta{display:inline-flex;align-items:center;justify-content:center;width:100%;height:60px;padding:0 34px;border:0;border-radius:999px;background:var(--green);color:var(--ink);font:inherit;font-size:18px;font-weight:600;text-decoration:none;cursor:pointer}
 .cta:active{transform:translateY(1px)}
 .fine{color:var(--mute);font-size:14px}
-.safe{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:15px;line-height:1.35;text-wrap:balance}.safe svg{flex:none;color:var(--mute)}
+.safe{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px 18px;color:var(--mute);font-size:14px;line-height:1.4}.safe li{display:flex;align-items:center;gap:7px}.safe svg{flex:none}
 .invited{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;background:var(--ink);color:#fff;font-size:13px;font-weight:600}
 label{display:block;font-size:15px;color:var(--mute);margin:0 0 8px}
 select,input[type=text]{width:100%;height:52px;font:inherit;font-size:16px;padding:0 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);appearance:none}
@@ -552,7 +552,7 @@ ${invitedBy ? '<span class="invited">A friend invited you.</span>' : ''}
 ${INVITE_CODE ? '<div><label for="invite">Invite code</label><input type="text" id="invite" name="invite" autocomplete="off" required></div>' : ''}
 <input type="hidden" name="consent" value="1"><input type="hidden" name="tz"><input type="hidden" name="from">${invitedBy ? `<input type="hidden" name="ref" value="${esc(invitedBy)}">` : ''}
 <button type="submit" class="cta">Link my WhatsApp</button>
-<p class="safe"><svg width="15" height="17" viewBox="0 0 15 17" aria-hidden="true"><rect x="1.5" y="7.5" width="12" height="8.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V5a3 3 0 0 1 6 0v2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>Recordings and their text aren&#39;t stored. They pass through, straight to your WhatsApp.</p>
+<ul class="safe"><li><svg width="12" height="14" viewBox="0 0 15 17" aria-hidden="true"><rect x="1.5" y="7.5" width="12" height="8.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 7.5V5a3 3 0 0 1 6 0v2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>Recordings and text are never saved.</li><li><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5H3.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1H6M10 5l3 3-3 3M13 8H6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlink anytime.</li></ul>
 <p class="fine">By continuing you agree to the <a href="/privacy">privacy &amp; terms</a>.</p>
 </form>
 ${DEMO}
