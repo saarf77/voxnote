@@ -67,7 +67,38 @@ test('the command: groups shows, groups mine / groups off set and persist, anyth
 
 test('Hebrew: every line of the new texts opens with a Hebrew letter', async () => {
   const t = tenant({ locale: 'he', groups: 'off' });
-  await say(t, 'groups'); await say(t, 'groups mine'); await say(t, 'groups');
+  await say(t, 'groups'); await say(t, 'groups mine'); await say(t, 'groups'); await say(t, 'groups private'); await say(t, 'groups');
   const texts = [...t.out.map((o) => o.text), t.welcomeText(), t.helpText()];
   for (const line of texts.flatMap((x) => x.split('\n')).filter((l) => l.trim())) { const first = line.match(/\p{L}/u)?.[0]; if (first) assert.match(first, /[֐-׿]/, line); }
+});
+
+test('groups private: every voice note in a group nobody switched is transcribed, and its text comes to the control group only', async () => {
+  const t = tenant({ groups: 'private' });
+  await rec(t, CLUB, true); await rec(t, CLUB, false);
+  assert.deepEqual(t.worked, [`mine@${CLUB}`, `theirs@${CLUB}`]);
+  const n = t.normalize({ key: { remoteJid: CLUB, fromMe: false, id: 'P1', participant: '777@s.whatsapp.net' }, pushName: 'Dana', message: { audioMessage: { ...node, fileSha256: Buffer.from('P1') } } });
+  t.out.length = 0;
+  assert.equal(await t.deliver(n, 'Book club', 'see you at eight', false, { key: { id: 'P1' } }), false, 'not a post in the chat');
+  assert.deepEqual(t.out.map((o) => o.jid), [CONTROL]);
+  assert.match(t.out[0].text, /^🎙️ \*Dana\* in \*Book club\*\nsee you at eight$/);
+  assert.equal(t.chatMode(CLUB), 'private'); assert.equal(t.chatMode(FRIEND), 'included', 'private chats are not touched');
+});
+
+test('groups private leaves the groups you switched alone: included posts in the group, excluded stays silent', async () => {
+  const t = tenant({ groups: 'private' });
+  await t.applySwitch({ chatId: CLUB, ids: [CLUB], name: 'Book club', isGroup: true }, 'include');
+  const n = t.normalize({ key: { remoteJid: CLUB, fromMe: false, id: 'I1', participant: '777@s.whatsapp.net' }, pushName: 'Dana', message: { audioMessage: { ...node, fileSha256: Buffer.from('I1') } } });
+  assert.equal(t.isPrivateHere(n), false, 'included: the text goes in the group');
+  await t.applySwitch({ chatId: CLUB, ids: [CLUB], name: 'Book club', isGroup: true }, 'exclude');
+  t.worked.length = 0; await rec(t, CLUB, true); await rec(t, CLUB, false);
+  assert.deepEqual(t.worked, [], 'excluded: nothing, not even mine');
+});
+
+test('the command: groups private sets and persists it, and groups shows the other two choices', async () => {
+  const t = tenant({ groups: 'off' });
+  assert.equal(await say(t, 'groups private'), true); assert.equal(t.groups, 'private');
+  assert.match(t.out.at(-1).text, /^👥 Done: In every group you haven't switched, every voice note/);
+  assert.equal(new Tenant({ id: t.id, createdAt: t.createdAt, manageKey: t.manageKey, groups: 'private' }, t.dir).groups, 'private');
+  await say(t, 'groups');
+  assert.match(t.out.at(-1).text, /\*groups off\*/); assert.match(t.out.at(-1).text, /\*groups mine\*/); assert.ok(!/\*groups private\*/.test(t.out.at(-1).text), 'the current one is not offered');
 });

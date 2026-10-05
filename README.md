@@ -36,7 +36,7 @@ message explains everything:
 | Write `leave` in the *Ramble* group, then `yes` | unlinks the device and erases your account |
 | Write `help` in the *Ramble* group | the list of commands |
 | Write `pause` / `resume` in the *Ramble* group | stops all transcription for a while / starts it again |
-| Write `groups`, `groups off` or `groups mine` in the *Ramble* group | shows / sets what happens in groups you haven't switched: nothing (new accounts), or your own voice notes get their text |
+| Write `groups`, `groups off`, `groups mine` or `groups private` in the *Ramble* group | shows / sets what happens in groups you haven't switched: nothing (new accounts), your own voice notes with the text in the group, or everyone's voice notes with the text only in the *Ramble* group |
 | Write `language` in the *Ramble* group; `language hebrew` (or `auto`) | shows / pins the transcription language |
 | In *Notes to self*: `names: David, Eden` | teaches the spelling of names (`names` lists, `names -X` removes) |
 | Record a voice note *in* the *Ramble* group: "send Eden that I'm on my way" | finds Eden in your contacts and shows who and what; reply `yes` (or a number, if several match) and it texts her, as you. Nothing is sent without your yes. Reply `undo` to a sent one to delete it |

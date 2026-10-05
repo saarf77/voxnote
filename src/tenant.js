@@ -135,7 +135,7 @@ export class Tenant {
       firstNoteAt: Number(rec.firstNoteAt) || 0, // the owner's first voice note in the group: the end of onboarding
       // Groups nobody switched: 'off' (nothing at all; new accounts) or 'mine' (the owner's own notes get their text).
       // Accounts from before the setting existed keep what they had: their own notes everywhere.
-      groups: rec.groups === 'off' ? 'off' : 'mine',
+      groups: rec.groups === 'off' || rec.groups === 'private' ? rec.groups : 'mine',
       paused: rec.paused === true, // the owner wrote "pause": nothing is transcribed until "resume"
       // Who this account is, for the admin page: the linked number and the owner's WhatsApp name.
       phone: /^\d{6,15}$/.test(rec.phone || '') ? rec.phone : '', waName: String(rec.waName || '').slice(0, 80),
@@ -315,7 +315,7 @@ Recordings are deleted the moment they become text.
 כל פקודה היא מילה אחת באנגלית.
 
 • הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה, או מספר טלפון (למשל *exclude אמא*), ו-*include* כדי להחזיר. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההקלטות שלך. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
-• קבוצות, *groups*: לכתוב *groups off* כדי שלא יתומלל כלום בקבוצות שלא הופעלו, או *groups mine* כדי שההודעות הקוליות שלך יתומללו בכל קבוצה שלא הוחרגה.
+• קבוצות, *groups*: מה קורה בקבוצות שלא הוגדרו אחרת. *groups off*: כלום. *groups mine*: רק ההודעות הקוליות שלך, עם טקסט בקבוצה. *groups private*: ההודעות הקוליות של כולם, עם הטקסט רק כאן.
 • תמלול בפרטיות, *private*: לכתוב כאן *private* ואת השם, והטקסט של כל הקלטה שם, גם שלך, יגיע רק לכאן, בלי שום דבר בצ'אט ההוא.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
 • שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
@@ -326,7 +326,7 @@ Recordings are deleted the moment they become text.
 Each one is a single word.
 
 • *include* / *exclude*: write it here with a contact's or a group's name, or a phone number (*exclude Mom*), to switch that chat, or reply it to a forwarded recording's text. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included. Groups start off, private chats start on.
-• *groups*: write *groups off* to transcribe nothing in groups you haven't switched, or *groups mine* to transcribe your own voice notes in every group except excluded ones.
+• *groups*: what happens in groups you haven't switched. *groups off*: nothing. *groups mine*: your own voice notes, with the text in the group. *groups private*: everyone's voice notes, with the text only here.
 • *private*: write it here with a name, and the text of every recording in that chat, yours included, comes only here; nothing is posted there.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
 • *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
@@ -349,17 +349,23 @@ Each one is a single word.
 
   /** Answer "groups" (show the setting) or "groups off" / "groups mine" (after setting it). */
   groupsReply(how) {
-    const he = this.ownerLocale() === 'he', mine = this.groups === 'mine';
-    const now = mine
-      ? (he ? "👥 בכל קבוצה (חוץ מאלה שהוחרגו) ההודעות הקוליות שלך מקבלות טקסט מתחתיהן. של אחרים מתומללות רק בקבוצות שהופעלו עם *include*."
-        : "👥 In every group (except excluded ones), your own voice notes get their text under them. Other people's are transcribed only in groups you *include*.")
-      : (he ? "👥 שום דבר לא מתומלל בקבוצות, לא שלך ולא של אחרים, אלא אם קבוצה הופעלה עם *include* (טקסט בקבוצה) או *private* (טקסט כאן)."
-        : "👥 Nothing is transcribed in groups, yours or anyone's, unless you *include* one (text in the group) or make it *private* (text here).");
-    if (how === 'set') return `${he ? '👥 בוצע: ' : '👥 Done: '}${now.replace(/^👥 /, '')}`;
-    const other = mine
-      ? (he ? 'כדי שלא יתומלל שום דבר בקבוצות: *groups off*.' : 'To transcribe nothing in groups: *groups off*.')
-      : (he ? 'כדי שההודעות הקוליות שלך יקבלו טקסט בכל קבוצה: *groups mine*.' : 'To get your own voice notes transcribed in every group: *groups mine*.');
-    return `${now}\n${other}`;
+    const he = this.ownerLocale() === 'he', g = this.groups;
+    const say = {
+      mine: he ? "👥 בכל קבוצה (חוץ מאלה שהוחרגו) ההודעות הקוליות שלך מקבלות טקסט מתחתיהן. של אחרים מתומללות רק בקבוצות שהופעלו עם *include*."
+        : "👥 In every group (except excluded ones), your own voice notes get their text under them. Other people's are transcribed only in groups you *include*.",
+      private: he ? "👥 בכל קבוצה שלא הוגדרה אחרת, כל הודעה קולית, שלך ושל כולם, מתומללת אל הקבוצה הזו בלבד. שום דבר לא נכתב בקבוצות עצמן."
+        : "👥 In every group you haven't switched, every voice note, yours and everyone's, is transcribed into this group only. Nothing is posted in the groups.",
+      off: he ? "👥 שום דבר לא מתומלל בקבוצות, לא שלך ולא של אחרים, אלא אם קבוצה הופעלה עם *include* (טקסט בקבוצה) או *private* (טקסט כאן)."
+        : "👥 Nothing is transcribed in groups, yours or anyone's, unless you *include* one (text in the group) or make it *private* (text here).",
+    };
+    if (how === 'set') return `${he ? '👥 בוצע: ' : '👥 Done: '}${say[g].replace(/^👥 /, '')}`;
+    const options = {
+      off: he ? 'שום דבר בקבוצות: *groups off*' : '*groups off*: nothing in groups',
+      mine: he ? 'רק ההודעות הקוליות שלך, עם טקסט בקבוצה: *groups mine*' : '*groups mine*: just your own voice notes, with the text in the group',
+      private: he ? 'כל ההודעות הקוליות, עם הטקסט רק כאן: *groups private*' : "*groups private*: everyone's voice notes, with the text only here",
+    };
+    const others = Object.keys(options).filter((k) => k !== g).map((k) => `• ${options[k]}`).join('\n');
+    return `${say[g]}\n${he ? 'אפשר גם:' : 'Or:'}\n${others}`;
   }
 
   /** Answer "language" (show it) or "language <name>" (set it). */
@@ -582,8 +588,8 @@ Each one is a single word.
     let want;
     if (inControl) want = true;                                                       // probe: always
     else if (this.isExcluded(n)) want = false;                                        // excluded by the owner: nothing, their own notes included
-    else if (n.fromMe && n.isVoice) want = !n.isGroup || this.groups === 'mine' || this.enabled.has(n.chatId) || this.isQuiet(n); // owner's notes: private chats, and groups by the setting
-    else if (n.isGroup) want = (this.enabled.has(n.chatId) || this.isQuiet(n)) && !this.archived.has(n.chatId);
+    else if (n.fromMe && n.isVoice) want = !n.isGroup || this.groups === 'mine' || this.enabled.has(n.chatId) || this.isPrivateHere(n); // owner's notes: private chats, and groups by the setting
+    else if (n.isGroup) want = (this.enabled.has(n.chatId) || this.isPrivateHere(n)) && !this.archived.has(n.chatId);
     else want = !this.archived.has(n.chatId);
     if (!want) return;
     // Paused by the owner: nothing is transcribed, nowhere. A recording in the group gets a reminder.
@@ -597,7 +603,7 @@ Each one is a single word.
     if (inControl) { await this.handleRecording(m, n, chatName, isVideo, inControl); return; }
     // Private mode: every recording in the chat, the owner's own included, has its text come to the control
     // group only. That is not a post in the chat, so it takes no part in deciding who posts there.
-    if (this.isQuiet(n)) {
+    if (this.isPrivateHere(n)) {
       // A copy in the control group would outlive a disappearing recording: none is made.
       if (n.expiration) { console.log(`${this.tag} ⏭️ private transcript skipped (disappearing chat)`); return; }
       await this.handleRecording(m, n, chatName, isVideo, inControl);
@@ -806,7 +812,7 @@ Each one is a single word.
   /** Resolves true once the text is in the chat (another account may be waiting to hear). */
   deliver(n, chatName, text, isVideo, original) {
     if (this.stopped) return false;
-    if (this.isQuiet(n)) return this.deliverPrivate(n, chatName, text, isVideo);
+    if (this.isPrivateHere(n)) return this.deliverPrivate(n, chatName, text, isVideo);
     const body = n.fromMe ? `${SELF_PREFIX}${text}` : `${isVideo ? '🎬' : '🎙️'} *${n.senderName || chatName || 'unknown'}*: ${text}`;
     // In a disappearing chat the text disappears on the same timer as the recording.
     const opts = { quoted: original, ...(n.expiration ? { ephemeralExpiration: n.expiration } : {}) };
@@ -1022,8 +1028,10 @@ Each one is a single word.
   isExcluded(n) { return this.muted.has(n.chatId) || (!!n.chatAlt && this.muted.has(n.chatAlt)); }
   /** True when this recording's chat is in private mode, under either of its ids. */
   isQuiet(n) { return this.quiet.has(n.chatId) || (!!n.chatAlt && this.quiet.has(n.chatAlt)); }
+  /** Private delivery for this recording: its chat is in private mode, or it is a group nobody switched and the setting is "groups private". */
+  isPrivateHere(n) { return this.isQuiet(n) || (n.isGroup && this.groups === 'private' && !this.enabled.has(n.chatId) && !this.isExcluded(n)); }
   /** What happens to other people's recordings in this chat: 'included' (text in the chat), 'private' (text here), or 'off'. */
-  chatMode(chatId) { return this.muted.has(chatId) ? 'off' : this.quiet.has(chatId) ? 'private' : this.chatIncluded(chatId) ? 'included' : chatId.endsWith('@g.us') && this.groups === 'mine' ? 'mine' : 'off'; }
+  chatMode(chatId) { return this.muted.has(chatId) ? 'off' : this.quiet.has(chatId) ? 'private' : this.chatIncluded(chatId) ? 'included' : chatId.endsWith('@g.us') && this.groups !== 'off' ? this.groups : 'off'; }
   /** Whether other people's recordings in this chat are transcribed. */
   chatIncluded(chatId) { return chatId.endsWith('@g.us') ? this.enabled.has(chatId) && !this.muted.has(chatId) : !this.muted.has(chatId); }
 
@@ -1277,7 +1285,7 @@ Each one is a single word.
     // groups, or groups off / groups mine: what happens in groups nobody switched.
     const grp = /^groups(?:\s*:?\s*(\S+))?$/.exec(lower);
     if (inControl && n.fromMe && !n.hasMedia && grp && !this.ownPosts.has(n.id)) {
-      const want = grp[1] === 'off' || grp[1] === 'mine' ? grp[1] : null;
+      const want = ['off', 'mine', 'private'].includes(grp[1]) ? grp[1] : null;
       const changed = want && want !== this.groups;
       if (changed) { this.groups = want; this.persistRecord(); console.log(`${this.tag} 👥 groups → ${want}`); }
       this.noteCommand('groups', changed ? `set to ${want}` : want ? `already ${want}` : grp[1] ? 'not an option' : 'shown');
