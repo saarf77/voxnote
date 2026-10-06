@@ -442,7 +442,7 @@ Each one is a single word.
 
   onChats(chats) {
     if (!Array.isArray(chats)) return;
-    let changed = false, named = false;
+    let changed = false, named = false, paired = false;
     for (const c of chats) {
       const id = c?.id; if (!id) continue;
       const arch = c.archived ?? c.archive;
@@ -452,21 +452,25 @@ Each one is a single word.
       const name = String(c.name || c.displayName || '').trim().slice(0, 80);
       if (name && id.endsWith('@g.us')) { if (!this.groupNames.get(id)) this.groupNames.set(id, name); }
       else if (name && !this.isSelfChat(id)) named = this.learnName(id, name) || named;
-      if (c.pnJid && c.lidJid) this.learnAltIds(jidNormalizedUser(c.pnJid), jidNormalizedUser(c.lidJid));
+      if (c.pnJid && c.lidJid) paired = this.learnAltIds(jidNormalizedUser(c.pnJid), jidNormalizedUser(c.lidJid), { save: false }) || paired;
     }
     if (changed) this.saveSet('archived.json', this.archived);
     if (named) this.saveMap('contacts.json', this.contactNames, 5000);
+    // One write for the whole list, not one per pair: a first bundle brings hundreds of pairs, and each
+    // write is the whole file, synchronously, on a network volume — the server stood still for the lot.
+    if (paired) this.saveMap('altids.json', this.altIds, 6000);
   }
   /** A display name for a chat the owner has not saved: never over a saved name. Returns true if it changed. */
   learnName(jid, name) {
     if (!jid || !name || this.savedNames.has(jid) || this.contactNames.get(jid) === name) return false;
     this.contactNames.set(jid, name); return true;
   }
-  /** The phone id and the lid of one private chat, when WhatsApp hands them over together. */
-  learnAltIds(pn, lid) {
-    if (!pn || !lid || this.altIds.get(pn) === lid) return;
+  /** The phone id and the lid of one private chat, when WhatsApp hands them over together. Returns true if it was new. */
+  learnAltIds(pn, lid, { save = true } = {}) {
+    if (!pn || !lid || this.altIds.get(pn) === lid) return false;
     this.altIds.set(pn, lid); this.altIds.set(lid, pn);
-    this.saveMap('altids.json', this.altIds, 6000);
+    if (save) this.saveMap('altids.json', this.altIds, 6000);
+    return true;
   }
   onContacts(contacts) {
     if (!Array.isArray(contacts)) return;

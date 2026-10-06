@@ -186,3 +186,17 @@ test('only the owner\'s own voice can dictate in the control group', async () =>
   await t.handleControlNote({ fromMe: false, isVoice: true, forwarded: false }, 'send Dana that I am late', 'body', false, {});
   assert.equal(probed, 1); assert.equal(asked, 0);
 });
+
+test('a chat bundle writes the id map once, not once per pair', () => {
+  const t = new Tenant({ id: 'alt', createdAt: Date.now(), manageKey: 'k'.repeat(32) }, join(process.env.DATA_DIR, 'alt'));
+  const file = join(process.env.DATA_DIR, 'alt', 'altids.json');
+  let writes = 0;
+  const real = t.saveMap.bind(t); t.saveMap = (name, map, cap) => { if (name === 'altids.json') writes++; return real(name, map, cap); };
+  const chats = Array.from({ length: 500 }, (_, i) => ({ id: `1555010${String(i).padStart(4, '0')}@s.whatsapp.net`, pnJid: `1555010${String(i).padStart(4, '0')}@s.whatsapp.net`, lidJid: `10000000${String(i).padStart(4, '0')}@lid` }));
+  t.onChats(chats);
+  assert.equal(writes, 1, 'one write for the bundle');
+  assert.equal(t.altIds.size, 1000); assert.equal(JSON.parse(readFileSync(file, 'utf8')).length, 1000, 'everything is on disk');
+  t.onChats(chats); assert.equal(writes, 1, 'nothing new, nothing written');
+  // A single live pair (not from a bundle) still saves at once.
+  assert.equal(t.learnAltIds('15550109999@s.whatsapp.net', '100000009999@lid'), true); assert.equal(writes, 2);
+});
