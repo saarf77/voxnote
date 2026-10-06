@@ -500,7 +500,7 @@ function adminPage(o, nonce, days = 30, sort = 'recent') {
   }
   const all = ts.map((t) => spend(t, rate));
   const allMin = all.reduce((a, x) => a + x.meteredMin + x.earlierMin, 0), allUsd = all.reduce((a, x) => a + x.usd + x.earlierUsd, 0);
-  const h = o.health, d = h.disk, away = h.turnedAway.full + h.turnedAway.waiting + h.turnedAway.rate;
+  const h = o.health, d = h.disk, away = h.turnedAway.full + h.turnedAway.waiting + h.turnedAway.rate + (h.turnedAway.stall || 0);
   // A figure turns red from 80% of its ceiling: that is when there is still time to do something.
   const warnAt = (text, share) => (share >= 0.8 ? `<span class="danger">${text}</span>` : text);
   const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : compact(n));
@@ -513,6 +513,7 @@ ${tile('Transcribed', ts.reduce((n, t) => n + (t.totals?.own || 0) + (t.totals?.
 ${tile('Minutes', Math.round(allMin), 'transcribed, all accounts')}
 ${tile('Cost', usd(allUsd), rate ? `${usd(rate)}/min measured` : 'estimate')}
 ${tile('Waiting to link', warnAt(o.pending, o.pending / (o.maxPending || Infinity)), `of ${o.maxPending} at once`)}
+${tile('Sign-ups', h.admission.open ? 'open' : '<span class="danger">paused</span>', h.admission.open ? `longest stall in the last minute ${(h.admission.stallMs / 1000).toFixed(1)}s` : `stood still ${(h.admission.stallMs / 1000).toFixed(1)}s in the last minute`)}
 ${tile('Need attention', errors)}
 ${tile('Audio today', o.budget.serverMinutesToday, `${o.budget.serverDailyMinutes ? `/ ${o.budget.serverDailyMinutes} ` : ''}min${o.budget.perAccountDailyMinutes ? ` · ${o.budget.perAccountDailyMinutes}/account` : ''}`)}
 </div>
@@ -522,7 +523,7 @@ ${tile('Accounts', warnAt(`${Math.round((o.accounts / o.max) * 100)}%`, o.accoun
 ${tile('Files on disk', d?.filesPct == null ? '—' : warnAt(`${d.filesPct}%`, d.filesPct / 100), d?.filesPct == null ? 'not reported here' : `${count(d.filesUsed)} used · ${count(d.filesFree)} free`)}
 ${tile('Disk space', o.dataMounted === false ? '<span class="danger">NOT MOUNTED</span>' : d?.spacePct == null ? 'OK' : warnAt(`${d.spacePct}%`, d.spacePct / 100), d ? `${d.freeMb >= 1000 ? `${(d.freeMb / 1000).toFixed(1)} GB` : `${d.freeMb} MB`} free` : 'data volume')}
 ${tile('Failed writes', h.diskFailures.failures ? `<span class="danger">${h.diskFailures.failures}</span>` : 0, h.diskFailures.failures ? `last ${esc(h.diskFailures.lastCode)} · ${ago(h.diskFailures.lastAt)}` : 'since restart')}
-${tile('Turned away', away ? `<span class="danger">${away}</span>` : 0, away ? `${h.turnedAway.full} full · ${h.turnedAway.waiting} queue · ${h.turnedAway.rate} rate limit` : 'sign-ups, since restart')}
+${tile('Turned away', away ? `<span class="danger">${away}</span>` : 0, away ? `${h.turnedAway.full} full · ${h.turnedAway.waiting} queue · ${h.turnedAway.stall || 0} load · ${h.turnedAway.rate} rate limit` : 'sign-ups, since restart')}
 ${tile('Memory', h.memoryMb >= 1000 ? `${(h.memoryMb / 1000).toFixed(1)} GB` : `${h.memoryMb} MB`, `heap ${count(h.memory.heapUsedMb)} · buffers ${count(h.memory.buffersMb)} MB`)}
 ${tile('Up', h.uptimeMinutes < 120 ? `${h.uptimeMinutes}m` : `${Math.round(h.uptimeMinutes / 60)}h`, 'since restart')}
 </div>
@@ -775,7 +776,10 @@ ${footFor(req, res)}`, { wide: true, nav: NAV }))));
       visitor: vid, visits: seen?.visits || 0, firstSeen: seen?.first || null, earlierAccounts: (seen?.accounts || []).length,
       hadAccount: prev && prevKey && prev.manageKey === prevKey ? prev.id : null,
     };
-    try { t = registry.create({ language: '', locale, referredBy: ref, signup }); if (vid) visitors.addAccount(vid, t.id); }
+    try {
+      const a = health.admission(); if (!a.open) throw Object.assign(new Error('The server is catching its breath. Please try again in a moment.'), { why: a.why });
+      t = registry.create({ language: '', locale, referredBy: ref, signup }); if (vid) visitors.addAccount(vid, t.id);
+    }
     catch (e) {
       health.noteTurnedAway(e.why); health.noteError(e);
       if (e.why) return res.status(503).type('html').send(roomPage(req, res));
@@ -790,7 +794,7 @@ ${footFor(req, res)}`, { wide: true, nav: NAV }))));
   // seconds of work, and a wave of them at once took it down. Whoever arrives while the door is
   // closed waits on this page; it asks every few seconds whether there is room and then sends
   // the same sign-up again on its own. Nothing is lost and nothing has to be refreshed.
-  const hasRoom = () => registry.pendingCount() < registry.MAX_PENDING && registry.list().length < registry.MAX_TENANTS;
+  const hasRoom = () => health.admission().open && registry.pendingCount() < registry.MAX_PENDING && registry.list().length < registry.MAX_TENANTS;
   app.get('/api/room', (_req, res) => res.json({ room: hasRoom() }));
   function roomPage(req, res) {
     const he = isHe(res), R = HE.room;

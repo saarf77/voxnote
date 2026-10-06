@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'readable-web-'));
 process.env.ADMIN_PASSWORD = 'test-admin-pw';
+process.env.STARTS_PER_HOUR = '12'; // every sign-up test shares one address; the limit test loops until it is refused
 process.env.TRUST_PROXY = '0';
 const registry = await import('../src/registry.js');
 const { createWebApp } = await import('../src/web.js');
@@ -118,8 +119,22 @@ test('admin shows the server\'s vital signs: files and space on the volume, refu
   const html = await (await fetch(`${base}/admin`, { headers: auth })).text();
   for (const label of ['Files on disk', 'Disk space', 'Failed writes', 'Turned away', 'Memory']) assert.ok(html.includes(label), label);
   assert.match(html, /Failed writes<\/small><b><span class="danger">2<\/span>/);
-  assert.match(html, /1 full · 0 queue · 2 rate limit/);
+  assert.match(html, /1 full · 0 queue · 0 load · 2 rate limit/);
   health._reset();
+});
+
+test('after the process stood still, sign-ups pause until a quiet minute; the queue page is what the visitor sees', async () => {
+  const health = await import('../src/health.js');
+  assert.deepEqual(await (await fetch(`${base}/api/room`)).json(), { room: true });
+  health._stalled(health.STALL_PAUSE_MS + 500); // the loop just stood still for longer than the threshold
+  try {
+    assert.deepEqual(await (await fetch(`${base}/api/room`)).json(), { room: false });
+    const res = await fetch(`${base}/start`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: base, 'accept-language': 'en' }, body: 'consent=1', redirect: 'manual' });
+    assert.equal(res.status, 503); assert.ok((await res.text()).includes('there is a queue'));
+    const j = await (await fetch(`${base}/admin.json`, { headers: { authorization: 'Basic ' + Buffer.from('x:test-admin-pw').toString('base64') } })).json();
+    assert.equal(j.health.admission.open, false); assert.equal(j.health.admission.why, 'stall'); assert.equal(j.health.turnedAway.stall, 1);
+  } finally { health._reset(); }
+  assert.deepEqual(await (await fetch(`${base}/api/room`)).json(), { room: true });
 });
 
 test('a sign-up records where it came from (country, device, source, returning browser); admin shows it in one line', async () => {
@@ -216,8 +231,8 @@ test('sign-up: consent required, per-IP limit, pending cap', async () => {
   // Earlier tests in this file also sign up from this address, so the limit may already be near.
   const first = await post('language=he');
   if (first.status === 303) assert.equal(first.headers.get('location'), '/', 'no consent → back to landing'); else assert.equal(first.status, 429);
-  let r; for (let i = 0; i < 8; i++) r = await post('language=zz');
-  assert.equal(r.status, 429, 'more than five attempts in an hour are refused');
+  let r; for (let i = 0; i < 14; i++) r = await post('language=zz');
+  assert.equal(r.status, 429, 'too many attempts in an hour are refused');
 });
 
 // ---- retest findings R6, R7 ----
