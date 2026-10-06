@@ -47,6 +47,23 @@ export function topLive(head, n = 10) {
   return { totalMb: Math.round(total / 1e6), top: [...sites].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, b]) => `${k} ${Math.round(b / 1e6)}MB`) };
 }
 
+let cpuBusy = false; // one CPU profile at a time, whoever asked
+/** A one-off CPU profile around something specific (a new link), logged under `label`; one at a time. */
+export function profileOnce(label, seconds = 45) {
+  if (!session || cpuBusy) return false;
+  cpuBusy = true;
+  (async () => {
+    try {
+      await session.post('Profiler.start');
+      await new Promise((r) => setTimeout(r, seconds * 1000));
+      const { profile } = await session.post('Profiler.stop');
+      console.log(`🔎 ${label}, ${seconds}s: ${topCpu(profile, 12).join(' · ')}`.slice(0, 1800));
+    } catch (e) { console.warn(`🔎 ${label} profile failed: ${e.message}`); }
+    cpuBusy = false;
+  })();
+  return true;
+}
+
 export async function startProfiling() {
   if (!ON || session) return false;
   try {
@@ -63,12 +80,13 @@ export async function startProfiling() {
 export async function profileLines(cpuSeconds = CPU_SECONDS) {
   if (!session) return [];
   const lines = [];
-  try {
+  if (!cpuBusy) try {
+    cpuBusy = true;
     await session.post('Profiler.start');
     await new Promise((r) => setTimeout(r, cpuSeconds * 1000));
     const { profile } = await session.post('Profiler.stop');
     lines.push(`🔎 cpu, ${cpuSeconds}s: ${topCpu(profile).join(' · ')}`);
-  } catch (e) { lines.push(`🔎 cpu profile failed: ${e.message}`); }
+  } catch (e) { lines.push(`🔎 cpu profile failed: ${e.message}`); } finally { cpuBusy = false; }
   try {
     const { profile } = await session.post('HeapProfiler.getSamplingProfile');
     const live = topLive(profile.head);

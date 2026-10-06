@@ -776,11 +776,33 @@ ${footFor(req, res)}`, { wide: true, nav: NAV }))));
       hadAccount: prev && prevKey && prev.manageKey === prevKey ? prev.id : null,
     };
     try { t = registry.create({ language: '', locale, referredBy: ref, signup }); if (vid) visitors.addAccount(vid, t.id); }
-    catch (e) { health.noteTurnedAway(e.why); health.noteError(e); return res.status(503).type('html').send(small(res, ['Try again soon', esc(e.why ? e.message : 'Something went wrong on our side. Please try again in a few minutes.')], HE.busy)); }
+    catch (e) {
+      health.noteTurnedAway(e.why); health.noteError(e);
+      if (e.why) return res.status(503).type('html').send(roomPage(req, res));
+      return res.status(503).type('html').send(small(res, ['Try again soon', 'Something went wrong on our side. Please try again in a few minutes.'], HE.busy));
+    }
     setSession(req, res, t);
     res.append('Set-Cookie', `rref=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${req.secure ? '; Secure' : ''}`);
     res.redirect(303, `/link/${t.id}`);
   });
+
+  // Sign-ups are let in a few at a time (MAX_PENDING, MAX_TENANTS): each new link costs the server
+  // seconds of work, and a wave of them at once took it down. Whoever arrives while the door is
+  // closed waits on this page; it asks every few seconds whether there is room and then sends
+  // the same sign-up again on its own. Nothing is lost and nothing has to be refreshed.
+  const hasRoom = () => registry.pendingCount() < registry.MAX_PENDING && registry.list().length < registry.MAX_TENANTS;
+  app.get('/api/room', (_req, res) => res.json({ room: hasRoom() }));
+  function roomPage(req, res) {
+    const he = isHe(res), R = HE.room;
+    const fields = ['consent', 'ref', 'invite', 'tz', 'from'].filter((k) => req.body?.[k] != null).map((k) => `<input type="hidden" name="${k}" value="${esc(String(req.body[k]).slice(0, 200))}">`).join('');
+    const title = he ? R.title : 'One moment, there is a queue';
+    const body = he ? R.body(PRODUCT_NAME) : `Lots of people are joining ${esc(PRODUCT_NAME)} right now, and we let a few in at a time so that everyone's link comes out right. Stay on this page: the moment there is room it carries on by itself, usually within a minute or two.`;
+    return page(res, title, `<h1 class="small">${title}</h1><p>${body}</p>
+<form method="post" action="/start" id="again">${fields}<p class="muted" id="wait"><span class="pill"><i></i>${he ? R.waiting : 'Waiting for a free spot…'}</span></p><button class="btn" type="submit">${he ? R.now : 'Try now'}</button></form>`, { poll: `
+const f=document.getElementById('again');let sent=false;
+async function ask(){if(sent)return;try{const r=await fetch('/api/room',{credentials:'same-origin'});if(r.ok&&(await r.json()).room){sent=true;f.submit();return;}}catch(e){}setTimeout(ask,12000+Math.random()*8000);}
+setTimeout(ask,8000);` });
+  }
 
   // Private-link auth: the key from the URL/body, else from the session cookie.
   function keyFrom(req) {

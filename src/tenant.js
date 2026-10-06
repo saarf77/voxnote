@@ -30,6 +30,7 @@ import { createGlossary } from './glossary.js';
 import * as research from './research.js';
 import * as claims from './claims.js';
 import { noteError } from './health.js';
+import { profileOnce } from './profile.js';
 import { normalizePhone } from './pairing.js';
 import { LOGO_MARK_SVG } from './logo.js';
 import { extractDictation, matchContacts, looksLikeDictation, norm as normName } from './dictate.js';
@@ -227,7 +228,7 @@ export class Tenant {
     this.ready = true; this.qr = null; this.mode = 'connected';
     const phone = this.ownId?.split('@')[0] || '', waName = String(sock.user?.name || sock.user?.verifiedName || this.waName).slice(0, 80);
     const known = (phone && phone !== this.phone) || waName !== this.waName; this.phone = phone || this.phone; this.waName = waName;
-    if (!this.linkedAt) { this.linkedAt = Date.now(); this.persistRecord(); this.onFirstLink?.(this); }
+    if (!this.linkedAt) { this.linkedAt = Date.now(); this.persistRecord(); this.onFirstLink?.(this); profileOnce('first link'); } // what the first minute of a new link costs the processor
     else if (known) this.persistRecord();
     this.pairPhone = ''; this.pairingCode = null;
     console.log(`${this.tag} ✅ connected as ${this.ownId?.replace(/^(\d{5})\d+/, '$1…')}${this.target ? ' · control group set' : ' · no control group yet'}`);

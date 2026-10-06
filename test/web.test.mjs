@@ -191,12 +191,33 @@ test('sign-up remembers whether to talk Hebrew or English', async () => {
   }
 });
 
+test('when sign-ups are paused the visitor gets a friendly page that retries on its own; /api/room says when there is room', async () => {
+  const registry = await import('../src/registry.js');
+  assert.deepEqual(await (await fetch(`${base}/api/room`)).json(), { room: true });
+  // Fill the queue of unscanned sign-ups (no sockets: start:false), then arrive as one more.
+  const filler = []; while (registry.pendingCount() < registry.MAX_PENDING) filler.push(registry.create({ start: false }));
+  try {
+    assert.deepEqual(await (await fetch(`${base}/api/room`)).json(), { room: false });
+    const res = await fetch(`${base}/start`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: base, 'accept-language': 'en' }, body: 'consent=1&ref=abcd1234&tz=Asia%2FJerusalem', redirect: 'manual' });
+    assert.equal(res.status, 503);
+    const html = await res.text();
+    assert.ok(html.includes('there is a queue') && html.includes('carries on by itself'), 'friendly wording');
+    assert.ok(html.includes('action="/start"') && html.includes('name="consent" value="1"') && html.includes('name="ref" value="abcd1234"'), 'the same sign-up is resent');
+    assert.ok(html.includes("fetch('/api/room'") && html.includes('f.submit()'), 'retries by itself');
+    assert.ok(!html.includes('down') && !html.includes('error'), 'no "server down" language');
+    const he = await (await fetch(`${base}/start`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: base, 'accept-language': 'he' }, body: 'consent=1', redirect: 'manual' })).text();
+    assert.ok(he.includes('יש תור'));
+  } finally { for (const t of filler) await registry.remove(t.id); }
+  assert.deepEqual(await (await fetch(`${base}/api/room`)).json(), { room: true });
+});
+
 test('sign-up: consent required, per-IP limit, pending cap', async () => {
   const post = (body) => fetch(`${base}/start`, { method: 'POST', headers: { origin: base, 'content-type': 'application/x-www-form-urlencoded' }, body, redirect: 'manual' });
-  assert.equal((await post('language=he')).status, 303, 'no consent → back to landing');
-  assert.equal((await post('language=he')).headers.get('location'), '/');
-  let r; for (let i = 0; i < 6; i++) r = await post('language=zz');
-  assert.equal(r.status, 429, 'sixth attempt in an hour is refused');
+  // Earlier tests in this file also sign up from this address, so the limit may already be near.
+  const first = await post('language=he');
+  if (first.status === 303) assert.equal(first.headers.get('location'), '/', 'no consent → back to landing'); else assert.equal(first.status, 429);
+  let r; for (let i = 0; i < 8; i++) r = await post('language=zz');
+  assert.equal(r.status, 429, 'more than five attempts in an hour are refused');
 });
 
 // ---- retest findings R6, R7 ----
