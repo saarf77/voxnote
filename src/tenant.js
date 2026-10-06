@@ -212,6 +212,7 @@ export class Tenant {
 
   async stop({ logout = false } = {}) {
     this.stopped = true; this.mode = 'stopped'; this.ready = false;
+    this.flushSaves();                  // whatever was waiting to be written is written now
     this.abort.abort();                 // downloads in progress are destroyed now
     // In-flight jobs stop at their next checkpoint; wait for them (bounded) so
     // that when we report "erased", nothing is still running.
@@ -428,6 +429,19 @@ Each one is a single word.
   }
   setLanguage(code) { this.language = code; this.persistRecord(); console.log(`${this.tag} 🌐 language set to ${code || 'auto'}`); }
   saveSet(name, set) { saveJson(this.f(name), [...set]); }
+  /**
+   * Save a file soon rather than now. Names, archive flags and the like arrive in hundreds of
+   * small events while an account syncs, and each save is the whole file, synchronously, on a
+   * network volume; one write a second or two later is the same file on disk with none of the
+   * standing still. Pending saves are written when the account stops.
+   */
+  saveSoon(name, write, delayMs = 1500) {
+    this._soon ??= new Map();
+    if (this._soon.has(name)) return;
+    const t = setTimeout(() => { this._soon.delete(name); if (!this.stopped) write(); }, delayMs); t.unref?.();
+    this._soon.set(name, { t, write });
+  }
+  flushSaves() { for (const [name, { t, write }] of this._soon || []) { clearTimeout(t); this._soon.delete(name); try { write(); } catch { /* best effort */ } } }
   saveMap(name, map, cap = CAP_MAP) { while (map.size > cap) map.delete(map.keys().next().value); saveJson(this.f(name), [...map]); }
   recordFwd(sentId, src) { if (sentId && src?.chatId) { this.fwdMap.set(sentId, { chatId: src.chatId, name: src.name }); this.saveMap('fwdmap.json', this.fwdMap); } }
   recordMediaSource(sha, src) { if (sha && src?.chatId) { this.mediaSrc.set(sha, { chatId: src.chatId, name: src.name, ts: Date.now() }); this.saveMap('mediasrc.json', this.mediaSrc, 3000); } }
@@ -454,8 +468,8 @@ Each one is a single word.
       else if (name && !this.isSelfChat(id)) named = this.learnName(id, name) || named;
       if (c.pnJid && c.lidJid) paired = this.learnAltIds(jidNormalizedUser(c.pnJid), jidNormalizedUser(c.lidJid), { save: false }) || paired;
     }
-    if (changed) this.saveSet('archived.json', this.archived);
-    if (named) this.saveMap('contacts.json', this.contactNames, 5000);
+    if (changed) this.saveSoon('archived.json', () => this.saveSet('archived.json', this.archived));
+    if (named) this.saveSoon('contacts.json', () => this.saveMap('contacts.json', this.contactNames, 5000));
     // One write for the whole list, not one per pair: a first bundle brings hundreds of pairs, and each
     // write is the whole file, synchronously, on a network volume — the server stood still for the lot.
     if (paired) this.saveMap('altids.json', this.altIds, 6000);
@@ -481,8 +495,8 @@ Each one is a single word.
       if (saved) { this.contactNames.set(jid, saved); if (!this.savedNames.has(jid)) { this.savedNames.add(jid); savedChanged = true; } changed = true; }
       else if (display && !this.savedNames.has(jid) && !this.contactNames.has(jid)) { this.contactNames.set(jid, display); changed = true; }
     }
-    if (changed) this.saveMap('contacts.json', this.contactNames, 5000);
-    if (savedChanged) this.saveSet('saved.json', this.savedNames);
+    if (changed) this.saveSoon('contacts.json', () => this.saveMap('contacts.json', this.contactNames, 5000));
+    if (savedChanged) this.saveSoon('saved.json', () => this.saveSet('saved.json', this.savedNames));
   }
   noteActivity(jid) {
     const count = (this.activity.get(jid) || 0) + 1;

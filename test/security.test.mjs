@@ -200,3 +200,18 @@ test('a chat bundle writes the id map once, not once per pair', () => {
   // A single live pair (not from a bundle) still saves at once.
   assert.equal(t.learnAltIds('15550109999@s.whatsapp.net', '100000009999@lid'), true); assert.equal(writes, 2);
 });
+
+test('a storm of contact and chat events writes each file once, a moment later; stopping writes what is pending', async () => {
+  const t = new Tenant({ id: 'soon', createdAt: Date.now(), manageKey: 'k'.repeat(32) }, join(process.env.DATA_DIR, 'soon'));
+  let writes = 0; const real = t.saveMap.bind(t), realSet = t.saveSet.bind(t);
+  t.saveMap = (n, m, c) => { writes++; return real(n, m, c); }; t.saveSet = (n, v) => { writes++; return realSet(n, v); };
+  for (let i = 0; i < 300; i++) t.onContacts([{ id: `1555010${String(i).padStart(4, '0')}@s.whatsapp.net`, name: `Contact ${i}` }]);
+  for (let i = 0; i < 100; i++) t.onChats([{ id: `1555020${String(i).padStart(4, '0')}@s.whatsapp.net`, archived: true }]);
+  assert.equal(writes, 0, 'nothing written yet');
+  await new Promise((r) => setTimeout(r, 1700));
+  assert.equal(writes, 3, 'contacts, saved, archived: one write each');
+  assert.equal(JSON.parse(readFileSync(join(process.env.DATA_DIR, 'soon', 'contacts.json'), 'utf8')).length, 300);
+  t.onContacts([{ id: '15550109999@s.whatsapp.net', name: 'Late' }]);
+  t.flushSaves(); assert.equal(writes, 5, 'stopping writes what was pending (contacts and saved)');
+  assert.ok(JSON.parse(readFileSync(join(process.env.DATA_DIR, 'soon', 'contacts.json'), 'utf8')).some(([, v]) => v === 'Late'));
+});
