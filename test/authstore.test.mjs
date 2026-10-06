@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { useMultiFileAuthState, proto } from '@whiskeysockets/baileys';
 import { useAuthStore, sqliteAvailable } from '../src/authstore.js';
 
-const fresh = () => mkdtempSync(join(tmpdir(), 'ramble-auth-'));
+const fresh = () => mkdtempSync(join(tmpdir(), 'voxnote-auth-'));
 const bytes = (n, fill) => Buffer.alloc(n, fill);
 // Invented keys with the shapes the real ones have: ids with ":" "/" "." and "@", buffers inside objects.
 const KEYS = {

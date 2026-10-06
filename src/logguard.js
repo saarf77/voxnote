@@ -30,7 +30,7 @@ export function screen(args) {
   return args.some(looksLikeKeys) ? args.map((a) => (looksLikeKeys(a) ? '[session keys withheld]' : a)) : args;
 }
 
-const GUARDED = Symbol.for('ramble.logguard');
+const GUARDED = Symbol.for('voxnote.logguard');
 if (!console[GUARDED]) {
   for (const level of ['log', 'info', 'warn', 'error', 'debug', 'trace']) {
     const original = console[level].bind(console);

@@ -13,7 +13,7 @@ delete process.env.TRANSCRIBE_LANGUAGE;
 const { transcribeRun } = await import('../src/transcribe.js');
 const { checkTranscript } = await import('../src/sanity.js');
 
-const dir = mkdtempSync(join(tmpdir(), 'ramble-pinned-'));
+const dir = mkdtempSync(join(tmpdir(), 'voxnote-pinned-'));
 const audio = join(dir, 'note.ogg'); writeFileSync(audio, Buffer.from('OggS fake'));
 const HEBREW = 'אני מגיע בעוד עשר דקות, תחכו לי ליד הכניסה';
 const ARABIC = 'انا جاي بعد عشر دقائق استنوني عند المدخل';

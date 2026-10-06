@@ -44,7 +44,7 @@ const GLOBAL_CONCURRENCY = Number(process.env.GLOBAL_CONCURRENCY ?? 8) || 8;
 const MAX_QUEUE = Number(process.env.MAX_QUEUE_PER_ACCOUNT ?? 20) || 20; // waiting jobs per account beyond the running ones
 const globalSlots = createSemaphore(GLOBAL_CONCURRENCY);
 
-export const PRODUCT_NAME = process.env.PRODUCT_NAME || 'Ramble';
+export const PRODUCT_NAME = process.env.PRODUCT_NAME || 'VoxNote';
 const OWNER_LABEL = 'me';
 // The languages an owner can pin, by code: set with "language <name>" in the control group ('' = auto-detect).
 export const LANGUAGES = [['', 'auto', 'Auto-detect', 'זיהוי אוטומטי'], ['he', 'hebrew', 'Hebrew', 'עברית'], ['en', 'english', 'English', 'אנגלית'], ['ar', 'arabic', 'Arabic', 'ערבית'], ['ru', 'russian', 'Russian', 'רוסית'], ['es', 'spanish', 'Spanish', 'ספרדית'], ['fr', 'french', 'French', 'צרפתית'], ['de', 'german', 'German', 'גרמנית'], ['pt', 'portuguese', 'Portuguese', 'פורטוגזית'], ['it', 'italian', 'Italian', 'איטלקית']];
@@ -318,7 +318,7 @@ export class Tenant {
   }
 
   // In Hebrew texts every line starts with a Hebrew letter: WhatsApp takes a line's direction
-  // from its first letter, and one that opens with "Ramble" or "on" comes out left-to-right.
+  // from its first letter, and one that opens with "VoxNote" or "on" comes out left-to-right.
   /** The language we talk to the owner in: their browser's at sign-up, else a Hebrew transcription setting or an Israeli number. */
   ownerLocale() {
     if (this.locale) return this.locale;
@@ -1459,7 +1459,7 @@ Each one is a single word.
       await this.sendPaced(n.chatId, { text: reply }, { quoted: m }).catch(() => {});
       return true;
     }
-    // Typed in the Ramble group and nothing took it: an answer nothing was waiting for, or not a command.
+    // Typed in the VoxNote group and nothing took it: an answer nothing was waiting for, or not a command.
     if (inControl && n.fromMe && !n.hasMedia && !this.ownPosts.has(n.id)) {
       this.noteCommand(/^(yes|no|undo|\d{1,2})$/.test(lower) ? 'reply' : 'text', /^(yes|no|undo|\d{1,2})$/.test(lower) ? 'nothing was waiting for it (expired or already answered)' : 'not a command');
       this.cmdNow = null; // nothing is sent back for these

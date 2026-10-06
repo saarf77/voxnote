@@ -1,10 +1,14 @@
-<p align="center"><img src="docs/logo.svg" width="96" alt="Ramble"></p>
+<p align="center"><img src="docs/logo.svg" width="96" alt="VoxNote"></p>
 
-# Ramble
+# VoxNote
+
+Maintained by [Saar Fridman](https://github.com/saarf77). [Project repository](https://github.com/saarf77/voxnote).
+
+Personal fork of [Ramble](https://github.com/tomer-van-cohen/ramble), originally created by Tomer Cohen. Original copyright and MIT license are preserved.
 
 Your WhatsApp voice notes, as text, right under each recording.
 
-Ramble links to your WhatsApp as a device (like WhatsApp Web) and turns voice
+VoxNote links to your WhatsApp as a device (like WhatsApp Web) and turns voice
 notes and videos into readable text — not a word-for-word transcript, a clear
 rewrite of what was said, with a one-line summary for long notes — posted back
 into WhatsApp as you.
@@ -24,25 +28,25 @@ into WhatsApp as you.
 Open the link and scan the QR (or, on the phone itself, get a code to type in under
 **Link with phone number instead**) with **WhatsApp → Settings → Linked devices → Link a
 device**, done. Any language; the speech model detects it (for the rare case it keeps
-guessing wrong, write `language hebrew`, or another, in the *Ramble* group). Ramble creates a group named *Ramble*
+guessing wrong, write `language hebrew`, or another, in the *VoxNote* group). VoxNote creates a group named *VoxNote*
 in your WhatsApp (only you in it) — that's your control panel, and its first
 message explains everything:
 
 | Do this | Effect |
 |---|---|
-| Write `settings` in the *Ramble* group | a link to the settings page (signs you in, good for 24 hours) |
-| Write `exclude Mom` / `include Mom` in the *Ramble* group (a contact's or a group's name, the name a business shows, or a phone number) | lists the matching chats if there are several, then asks; `yes` switches that chat. An excluded chat is not transcribed at all, your own voice notes included |
-| Forward a voice note from any chat into the *Ramble* group | its text + whether that chat is transcribed; reply `exclude` / `include` to switch it (it asks first) |
+| Write `settings` in the *VoxNote* group | a link to the settings page (signs you in, good for 24 hours) |
+| Write `exclude Mom` / `include Mom` in the *VoxNote* group (a contact's or a group's name, the name a business shows, or a phone number) | lists the matching chats if there are several, then asks; `yes` switches that chat. An excluded chat is not transcribed at all, your own voice notes included |
+| Forward a voice note from any chat into the *VoxNote* group | its text + whether that chat is transcribed; reply `exclude` / `include` to switch it (it asks first) |
 | Write `exclude` or `include` alone | what is excluded / which groups are transcribed |
-| Write `private Mom` (or reply `private` to a forwarded recording's text) | asks first; then every recording in that chat, yours included, is transcribed into the *Ramble* group only, with nothing posted in the chat. Disappearing chats are skipped |
-| Reply `delete` to anything Ramble posted | deletes it for everyone |
-| Write `leave` in the *Ramble* group, then `yes` | unlinks the device and erases your account |
-| Write `help` in the *Ramble* group | the list of commands |
-| Write `pause` / `resume` in the *Ramble* group | stops all transcription for a while / starts it again |
-| Write `groups`, `groups off`, `groups mine`, `groups all` or `groups private` in the *Ramble* group | shows / sets what happens in groups you haven't switched: nothing, your own voice notes with the text in the group (new accounts), everyone's with the text in the group, or everyone's with the text only in the *Ramble* group |
-| Write `language` in the *Ramble* group; `language hebrew` (or `auto`) | shows / pins the transcription language |
+| Write `private Mom` (or reply `private` to a forwarded recording's text) | asks first; then every recording in that chat, yours included, is transcribed into the *VoxNote* group only, with nothing posted in the chat. Disappearing chats are skipped |
+| Reply `delete` to anything VoxNote posted | deletes it for everyone |
+| Write `leave` in the *VoxNote* group, then `yes` | unlinks the device and erases your account |
+| Write `help` in the *VoxNote* group | the list of commands |
+| Write `pause` / `resume` in the *VoxNote* group | stops all transcription for a while / starts it again |
+| Write `groups`, `groups off`, `groups mine`, `groups all` or `groups private` in the *VoxNote* group | shows / sets what happens in groups you haven't switched: nothing, your own voice notes with the text in the group (new accounts), everyone's with the text in the group, or everyone's with the text only in the *VoxNote* group |
+| Write `language` in the *VoxNote* group; `language hebrew` (or `auto`) | shows / pins the transcription language |
 | In *Notes to self*: `names: David, Eden` | teaches the spelling of names (`names` lists, `names -X` removes) |
-| Record a voice note *in* the *Ramble* group: "send Eden that I'm on my way" | finds Eden in your contacts and shows who and what; reply `yes` (or a number, if several match) and it texts her, as you. Nothing is sent without your yes. Reply `undo` to a sent one to delete it |
+| Record a voice note *in* the *VoxNote* group: "send Eden that I'm on my way" | finds Eden in your contacts and shows who and what; reply `yes` (or a number, if several match) and it texts her, as you. Nothing is sent without your yes. Reply `undo` to a sent one to delete it |
 
 When both sides of a chat have an account on the same server, a recording still gets
 one text: the sender's account posts it, and the recipient's steps in only if the
@@ -52,18 +56,18 @@ Every command is one English word (`on`, `off`, `delete`, `yes`, `no`, `undo`,
 `leave`, `help`, `settings`, `language`, `pause`, `resume`, `include`, `exclude`, `private`, `groups`, `names`): no synonyms and no translations, so it is never a question
 which to write. A *spoken* answer to a question may be a Hebrew yes/no or a number word.
 
-To stop using it, write `leave` in the *Ramble* group and confirm with `yes`: the
+To stop using it, write `leave` in the *VoxNote* group and confirm with `yes`: the
 device is logged out of your WhatsApp and everything about your account is erased.
 
 ## ⚠️ Read this first
 
-Ramble is a transcription service: it turns recordings into readable text.
+VoxNote is a transcription service: it turns recordings into readable text.
 WhatsApp is only the channel it receives recordings from and posts the text back
-into. Ramble adds nothing to WhatsApp, offers no WhatsApp feature, and is not
+into. VoxNote adds nothing to WhatsApp, offers no WhatsApp feature, and is not
 affiliated with WhatsApp or Meta. Any paid plan pays for the transcription (the
 audio minutes and the model), never for WhatsApp or access to it.
 
-To be that channel, Ramble uses [Baileys](https://github.com/WhiskeySockets/Baileys),
+To be that channel, VoxNote uses [Baileys](https://github.com/WhiskeySockets/Baileys),
 which speaks WhatsApp's multi-device protocol directly. That is **not an official
 WhatsApp API** and it is against WhatsApp's Terms of Service. Accounts using
 unofficial clients can, in rare cases, be **temporarily or permanently
@@ -93,7 +97,7 @@ container with a persistent disk; steps for [Railway](https://railway.app):
    | `ADMIN_USER` | optional; the `/admin` username, long and random (unset = any username) |
    | `INVITE_CODE` | optional; the landing page then requires it (closed beta) |
    | `TRUST_PROXY` | proxy hops in front of the app (`2` on Railway) |
-   | `PRODUCT_NAME` | the name of the control group created in each user's WhatsApp (default `Ramble`) |
+   | `PRODUCT_NAME` | the name of the control group created in each user's WhatsApp (default `VoxNote`) |
    | `MAX_TENANTS` | how many accounts this server accepts (default 50) |
 
 4. Generate a public domain. That domain is the link you give people.
@@ -134,7 +138,7 @@ returns an account's private link for support. See `.env.example` for every sett
 ## Cost and abuse controls
 
 Transcription is nearly all of the cost: about half a cent per thirty-second
-voice note on a paid provider, a fraction of that on a free-tier one. Ramble
+voice note on a paid provider, a fraction of that on a free-tier one. VoxNote
 reserves audio seconds *before* calling any provider, against three ceilings:
 
 | Ceiling | Default | What it stops |

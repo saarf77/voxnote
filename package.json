@@ -1,9 +1,9 @@
 {
-  "name": "ramble",
-  "repository": "github:tomer-van-cohen/ramble",
+  "name": "voxnote",
+  "repository": "github:saarf77/voxnote",
   "license": "MIT",
   "version": "1.0.0",
-  "description": "Ramble: your WhatsApp voice notes, as text, right under each recording. Links to your WhatsApp as a device; hosted or self-hosted.",
+  "description": "VoxNote: your WhatsApp voice notes, as text, right under each recording. Links to your WhatsApp as a device; hosted or self-hosted.",
   "type": "module",
   "private": true,
   "scripts": {
@@ -21,5 +21,9 @@
   "engines": {
     "node": ">=22.13"
   },
-  "homepage": "https://ramble.baby"
+  "homepage": "https://github.com/saarf77/voxnote",
+  "author": {
+    "name": "Saar Fridman",
+    "url": "https://github.com/saarf77"
+  }
 }

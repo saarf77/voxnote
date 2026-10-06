@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-admin-user-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-admin-user-'));
 process.env.ADMIN_PASSWORD = 'test-admin-pw';
 process.env.ADMIN_USER = 'test-admin-user';
 process.env.TRUST_PROXY = '0';

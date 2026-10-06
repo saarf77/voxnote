@@ -6,21 +6,21 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-commands-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-commands-'));
 const { Tenant } = await import('../src/tenant.js');
 
 const CONTROL = '999@g.us';
 function tenant({ realSend = false } = {}) {
   const id = `cm${Math.random()}`.replace('.', '');
   const t = new Tenant({ id, createdAt: Date.now(), manageKey: 'k'.repeat(32) }, join(process.env.DATA_DIR, id));
-  t.target = { jid: CONTROL, name: 'Ramble' };
+  t.target = { jid: CONTROL, name: 'VoxNote' };
   t.contactNames = new Map([['444@s.whatsapp.net', 'Ron Levi']]); // invented
   let seq = 0;
   t.sock = { sendMessage: async () => ({ key: { id: `S${++seq}` } }), groupFetchAllParticipating: async () => ({}), signalRepository: { lidMapping: { getLIDForPN: async () => null, getPNForLID: async () => null } } };
   if (!realSend) t.sendPaced = async () => ({ key: { id: `S${++seq}` } });
   return t;
 }
-const say = (t, body) => { const key = { remoteJid: CONTROL, fromMe: true, id: `T${Math.random()}` }; const message = { conversation: body }; return t.handleCommand({ key, message }, t.normalize({ key, message }), 'Ramble'); };
+const say = (t, body) => { const key = { remoteJid: CONTROL, fromMe: true, id: `T${Math.random()}` }; const message = { conversation: body }; return t.handleCommand({ key, message }, t.normalize({ key, message }), 'VoxNote'); };
 
 test('each command and its outcome is noted, failures included, with no names or text', async () => {
   const t = tenant();

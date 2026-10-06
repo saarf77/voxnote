@@ -6,7 +6,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-private-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-private-'));
 process.env.CLAIM_YIELD_MS = '20';
 process.env.CLAIM_WAIT_MS = '300';
 const { Tenant } = await import('../src/tenant.js');
@@ -17,11 +17,11 @@ let seq = 0;
 function tenant(id = `pv${++seq}`) {
   const dir = join(process.env.DATA_DIR, id);
   const t = new Tenant({ id, createdAt: Date.now(), manageKey: 'k'.repeat(32) }, dir);
-  t.target = { jid: CONTROL, name: 'Ramble' };
+  t.target = { jid: CONTROL, name: 'VoxNote' };
   t.contactNames = new Map([[RON, 'Ron Levi']]);
   t.out = [];
   t.sendPaced = async (jid, content, opts = {}) => { t.out.push({ jid, ...content, quoted: !!opts.quoted }); return { key: { id: `S${++seq}` } }; };
-  t.sock = { sendMessage: async () => ({ key: { id: `S${++seq}` } }), groupFetchAllParticipating: async () => ({ [CLUB]: { subject: 'Book club' }, [CONTROL]: { subject: 'Ramble' } }) };
+  t.sock = { sendMessage: async () => ({ key: { id: `S${++seq}` } }), groupFetchAllParticipating: async () => ({ [CLUB]: { subject: 'Book club' }, [CONTROL]: { subject: 'VoxNote' } }) };
   // Transcription stands in: every recording becomes the same short text, delivered the usual way.
   t.transcribed = [];
   t.handleRecording = async (m, n, chatName, isVideo) => { t.transcribed.push(n.id); return t.deliver(n, chatName, '*Running late*\nI will be there at eight.', isVideo, m); };
@@ -30,7 +30,7 @@ function tenant(id = `pv${++seq}`) {
 const say = (t, body, quotedId = null) => {
   const key = { remoteJid: CONTROL, fromMe: true, id: `T${++seq}` };
   const message = quotedId ? { extendedTextMessage: { text: body, contextInfo: { stanzaId: quotedId } } } : { conversation: body };
-  return t.handleCommand({ key, message }, t.normalize({ key, message }), 'Ramble');
+  return t.handleCommand({ key, message }, t.normalize({ key, message }), 'VoxNote');
 };
 const node = { mediaKey: 'AAAA', directPath: '/v/t62.7117-24/abc.enc?ccb=11-4&oh=x', url: 'https://mmg.whatsapp.net/v/t62.7117-24/abc.enc', fileLength: 1200, seconds: 30, ptt: true };
 const recording = (chatId, { fromMe = false, participant, expiration, id = `V${++seq}` } = {}) => ({

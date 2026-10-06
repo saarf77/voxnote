@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 process.env.CONNECT_CONCURRENCY = '10';
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-gate-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-gate-'));
 const { connectSlot, connectQueue, jitter } = await import('../src/connectgate.js');
 
 test('three hundred accounts coming back at once: never more than ten attempts in flight, in the order they asked', async () => {

@@ -1,4 +1,4 @@
-# Ramble — cloud image.
+# VoxNote — cloud image.
 # Runs the site + every linked account; persist /data on a volume.
 FROM node:22-bookworm-slim
 

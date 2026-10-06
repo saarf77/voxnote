@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-admin-sort-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-admin-sort-'));
 process.env.ADMIN_PASSWORD = 'test-admin-pw';
 process.env.TRUST_PROXY = '0';
 const registry = await import('../src/registry.js');

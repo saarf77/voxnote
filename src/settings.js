@@ -5,7 +5,7 @@
  *   on    — transcribe in this kind of chat at all
  *   who   — 'mine' (the owner's own voice notes) or 'all' (everyone's)
  *   where — 'chat' (the text under the recording, for everyone in the chat) or
- *           'me' (the text only in the owner's Ramble group; then it is everyone's)
+ *           'me' (the text only in the owner's VoxNote group; then it is everyone's)
  *   some  — chat ids: when not empty, only these chats are transcribed
  *
  * The page shows one "where" for both sections and sets both; an account from

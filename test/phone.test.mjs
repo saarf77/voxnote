@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-phone-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-phone-'));
 process.env.TRUST_PROXY = '0';
 const { normalizePhone, countryFromLanguage, COUNTRIES } = await import('../src/pairing.js');
 const registry = await import('../src/registry.js');

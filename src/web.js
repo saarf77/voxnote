@@ -29,8 +29,8 @@ import * as health from './health.js';
 import { HE, landingHe, howHe, privacyHe } from './site-he.js';
 import { checkSettingsToken } from './settings.js';
 
-const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
-const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
+const REPO_URL = process.env.REPO_URL || 'https://github.com/saarf77/voxnote';
+const TAGLINE = 'VoxNote. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
 // One home: requests arriving on a retired domain are sent to the current one, path and all.
 const CANONICAL_HOST = (process.env.CANONICAL_HOST || '').toLowerCase();
 const LEGACY_HOSTS = new Set((process.env.LEGACY_HOSTS || '').toLowerCase().split(',').map((h) => h.trim()).filter(Boolean));
@@ -395,7 +395,7 @@ function cards(ts, byCode, rate, byId) {
     return g[0] === t ? pendingCard(t, byId, g.slice(1)) : '';
   }).join('');
 }
-// The owner's last commands in the Ramble group, newest first: the word, what came of it, and whether our reply went out.
+// The owner's last commands in the VoxNote group, newest first: the word, what came of it, and whether our reply went out.
 const CMD_BAD = /no chat|could not|failed|nothing was waiting|not a command|not an option|no contact|unchanged/;
 function commandList(cmds = []) {
   if (!cmds.length) return '';
@@ -623,7 +623,7 @@ try{const r=document.referrer&&new URL(document.referrer);if(r&&r.host!==locatio
   const CODE_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/></svg>';
   const NAV = '<a class="navlink" href="/how">How it works</a>';
   const FOOT = `<footer class="foot wrap"><p>${esc(PRODUCT_NAME)} is not made by WhatsApp. It&#39;s an unofficial client, so <a href="/privacy">read the risks</a> first.</p><nav><a href="/how">How it works</a><a href="/privacy">Privacy &amp; terms</a><a href="${esc(REPO_URL)}">Open source</a></nav></footer>`;
-  const CLOSE = '<section class="close"><div class="wrap"><h2>Go on. Ramble.</h2><a class="cta" href="/#start">Link my WhatsApp</a></div></section>';
+  const CLOSE = '<section class="close"><div class="wrap"><h2>Speak freely. Read clearly.</h2><a class="cta" href="/#start">Link my WhatsApp</a></div></section>';
   // The same fragments in the page's language. English pages offer Hebrew only to a browser that has it.
   const isHe = (res) => res.locals.lang === 'he';
   const navFor = (res) => (isHe(res) ? `<a class="navlink" href="/how">${HE.nav}</a>` : NAV);
@@ -643,7 +643,7 @@ try{const r=document.referrer&&new URL(document.referrer);if(r&&r.host!==locatio
     res.type('html').send(page(res, PRODUCT_NAME, `
 <section class="hero wrap">
 ${invitedBy ? '<span class="invited">A friend invited you.</span>' : ''}
-<h1>Ramble, baby.<br><span>It&#39;s handled.</span></h1>
+<h1>VoxNote.<br><span>It&#39;s handled.</span></h1>
 <p class="sub">Every voice note, as text you can read at a glance. Right under the recording.</p>
 <form method="post" action="/start" id="start" class="start">
 ${INVITE_CODE ? '<div><label for="invite">Invite code</label><input type="text" id="invite" name="invite" autocomplete="off" required></div>' : ''}
@@ -657,7 +657,7 @@ ${DEMO}
 <section class="band"><div class="wrap">
 <div class="both">
 <div class="lead"><h2>Works both ways.</h2><p>The voice notes you send get text for them. The ones they send get text for you.</p></div>
-<div class="say"><span class="me">You ramble. They read.</span><span class="them">They ramble. You read.</span></div>
+<div class="say"><span class="me">You speak. They read.</span><span class="them">They speak. You read.</span></div>
 </div>
 <div class="facts"><p><b>Any language.</b> It works out which one on its own.</p><p><b>Nothing kept.</b> A recording is deleted the moment it becomes text.</p></div>
 </div></section>

@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-pause-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-pause-'));
 process.env.CLAIM_YIELD_MS = '5';
 const { Tenant } = await import('../src/tenant.js');
 
@@ -14,14 +14,14 @@ const node = { mediaKey: 'AAAA', directPath: '/v/t62.7117-24/abc.enc?ccb=11-4&oh
 let seq = 0;
 function tenant(rec = {}) {
   const t = new Tenant({ id: `p${++seq}`, createdAt: Date.now(), manageKey: 'k'.repeat(32), ...rec }, join(process.env.DATA_DIR, `p${seq}`));
-  t.target = { jid: CONTROL, name: 'Ramble' };
+  t.target = { jid: CONTROL, name: 'VoxNote' };
   t.out = []; t.worked = [];
   t.sendPaced = async (jid, content) => { t.out.push({ jid, ...content }); return { key: { id: `S${++seq}` } }; };
   t.handleRecording = async (m, n) => { t.worked.push(n.id); return true; };
   t.sock = {};
   return t;
 }
-const say = (t, body) => { const key = { remoteJid: CONTROL, fromMe: true, id: `T${++seq}` }; const message = { conversation: body }; return t.handleCommand({ key, message }, t.normalize({ key, message }), 'Ramble'); };
+const say = (t, body) => { const key = { remoteJid: CONTROL, fromMe: true, id: `T${++seq}` }; const message = { conversation: body }; return t.handleCommand({ key, message }, t.normalize({ key, message }), 'VoxNote'); };
 const voice = (t, chat, fromMe = false) => t.onMessage({ key: { remoteJid: chat, fromMe, id: `V${++seq}` }, pushName: 'Someone', message: { audioMessage: node } }, t.sock);
 
 test('pause stops every transcription; resume brings it back; the state survives a restart', async () => {

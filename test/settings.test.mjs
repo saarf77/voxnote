@@ -6,11 +6,11 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-settings-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-settings-'));
 process.env.CLAIM_YIELD_MS = '5';
 process.env.TRUST_PROXY = '0';
 process.env.GITHUB_STARS = 'off';
-process.env.PUBLIC_URL = 'https://ramble.example';
+process.env.PUBLIC_URL = 'https://voxnote.example';
 const S = await import('../src/settings.js');
 const { Tenant } = await import('../src/tenant.js');
 const registry = await import('../src/registry.js');
@@ -21,7 +21,7 @@ let seq = 0;
 function tenant(rec = {}) {
   const id = `st${++seq}`;
   const t = new Tenant({ id, createdAt: Date.now(), manageKey: 'k'.repeat(32), ...rec }, join(process.env.DATA_DIR, id));
-  t.target = { jid: CONTROL, name: 'Ramble' };
+  t.target = { jid: CONTROL, name: 'VoxNote' };
   t.out = []; t.worked = [];
   t.sendPaced = async (jid, content) => { t.out.push({ jid, ...content }); return { key: { id: `S${++seq}` } }; };
   t.handleRecording = async (m, n) => { t.worked.push(`${n.fromMe ? 'mine' : 'theirs'}@${n.chatId}>${n.route}`); return true; };
@@ -30,7 +30,7 @@ function tenant(rec = {}) {
 }
 const node = { mediaKey: 'AAAA', directPath: '/v/t62.7117-24/abc.enc?ccb=11-4&oh=x', url: 'https://mmg.whatsapp.net/v/t62.7117-24/abc.enc', fileLength: 1200, seconds: 30, ptt: true };
 const rec = (t, chatId, fromMe, alt) => { const id = `V${++seq}`; return t.onMessage({ key: { remoteJid: chatId, fromMe, id, ...(alt ? { remoteJidAlt: alt } : {}), ...(chatId.endsWith('@g.us') && !fromMe ? { participant: '777@s.whatsapp.net' } : {}) }, pushName: 'Someone', message: { audioMessage: { ...node, fileSha256: Buffer.from(id) } } }, t.sock); };
-const say = (t, body) => { const key = { remoteJid: CONTROL, fromMe: true, id: `T${++seq}` }; const message = { conversation: body }; return t.handleCommand({ key, message }, t.normalize({ key, message }), 'Ramble'); };
+const say = (t, body) => { const key = { remoteJid: CONTROL, fromMe: true, id: `T${++seq}` }; const message = { conversation: body }; return t.handleCommand({ key, message }, t.normalize({ key, message }), 'VoxNote'); };
 /** Every case at once: my note and theirs, in a private chat and a group. */
 async function matrix(t) {
   t.worked = [];
@@ -111,7 +111,7 @@ test('the groups command speaks the same model: off, mine, all, private', async 
 test('the settings command sends a link that signs in for a day, in the owner\'s language', async () => {
   const t = tenant();
   assert.equal(await say(t, 'settings'), true);
-  const url = /https:\/\/ramble\.example\/settings\/(\w+)\?t=([\w.-]+)/.exec(t.out.at(-1).text);
+  const url = /https:\/\/voxnote\.example\/settings\/(\w+)\?t=([\w.-]+)/.exec(t.out.at(-1).text);
   assert.ok(url, t.out.at(-1).text);
   assert.equal(url[1], t.id);
   assert.equal(S.checkSettingsToken(t.id, t.manageKey, url[2]), true);
@@ -134,7 +134,7 @@ function linked() {
   const t = registry.create({ start: false });
   t.linkedAt = Date.now();
   t.contactNames = new Map([[RON, 'Ron Levi'], [DANA, 'Dana'], [RON_LID, 'Ron Levi']]); t.altIds = new Map([[RON, RON_LID], [RON_LID, RON]]);
-  t.savedNames = new Set([RON]); t.groupNames = new Map([[CLUB, 'Book club'], [CONTROL, 'Ramble']]); t.target = { jid: CONTROL, name: 'Ramble' };
+  t.savedNames = new Set([RON]); t.groupNames = new Map([[CLUB, 'Book club'], [CONTROL, 'VoxNote']]); t.target = { jid: CONTROL, name: 'VoxNote' };
   return { t, cookie: `rl=${t.id}.${t.manageKey}` };
 }
 
@@ -155,7 +155,7 @@ test('the page draws in both languages from the same strings; the welcome only r
   const get = async (q, al) => (await fetch(`${base}/settings/${t.id}${q}`, { headers: { cookie, 'accept-language': al } })).text();
   const table = (html) => JSON.parse(/const S=(\{.*?\});const P=/s.exec(html)[1]);
   const he = await get('', HE), en = await get('?welcome=1', EN);
-  assert.match(he, /dir="rtl"/); assert.match(he, /no-store|Ramble/);
+  assert.match(he, /dir="rtl"/); assert.match(he, /no-store|VoxNote/);
   const keys = (o) => Object.entries(o).flatMap(([k, v]) => (typeof v === 'object' ? keys(v).map((x) => `${k}.${x}`) : [k])).sort();
   assert.deepEqual(keys(table(he)), keys(table(en)), 'a string added in one language must exist in the other');
   for (const [k, v] of Object.entries(table(he))) if (typeof v === 'string') assert.match(v, /[֐-׿]/, `${k} is Hebrew`);

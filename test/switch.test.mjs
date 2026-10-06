@@ -6,7 +6,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-switch-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-switch-'));
 const { Tenant } = await import('../src/tenant.js');
 
 const CONTROL = '999@g.us';
@@ -18,12 +18,12 @@ const contacts = new Map([
   ['9001@lid', 'אמא'],
   ['444@s.whatsapp.net', 'Ron Levi'],
 ]);
-const groups = { '555@g.us': { subject: 'Book club' }, '666@g.us': { subject: 'Dana birthday' }, [CONTROL]: { subject: 'Ramble' } };
+const groups = { '555@g.us': { subject: 'Book club' }, '666@g.us': { subject: 'Dana birthday' }, [CONTROL]: { subject: 'VoxNote' } };
 const lids = new Map([['333@s.whatsapp.net', '9001@lid']]);
 
 function tenant() {
   const t = new Tenant({ id: `sw${Math.random()}`.replace('.', ''), createdAt: Date.now(), manageKey: 'k'.repeat(32) }, join(process.env.DATA_DIR, `sw${Math.random()}`));
-  t.target = { jid: CONTROL, name: 'Ramble' };
+  t.target = { jid: CONTROL, name: 'VoxNote' };
   t.contactNames = new Map(contacts);
   const out = []; let seq = 0;
   t.sendPaced = async (jid, content) => { out.push({ jid, ...content }); return { key: { id: `S${++seq}` } }; };
@@ -41,7 +41,7 @@ function tenant() {
 const say = (t, body, quotedId = null) => {
   const key = { remoteJid: CONTROL, fromMe: true, id: `T${Math.random()}` };
   const message = quotedId ? { extendedTextMessage: { text: body, contextInfo: { stanzaId: quotedId } } } : { conversation: body };
-  return t.handleCommand({ key, message }, t.normalize({ key, message }), 'Ramble');
+  return t.handleCommand({ key, message }, t.normalize({ key, message }), 'VoxNote');
 };
 const note = (t, chatId, chatAlt = null) => t.normalize({ key: { remoteJid: chatId, remoteJidAlt: chatAlt, fromMe: true, id: `N${Math.random()}` }, message: { audioMessage: { ptt: true, seconds: 3, fileSha256: Buffer.from('x') } } });
 
@@ -64,7 +64,7 @@ test('several matches: a list, a number picks, and the pick is still confirmed; 
   assert.match(ask, /Which one\?/);
   assert.match(ask, /Dana Cohen \(…111\)/); assert.match(ask, /Dana Cohen \(…222\)/, 'two people with one name stay apart');
   assert.match(ask, /Dana birthday \(group\)/, 'groups are found by name too');
-  assert.ok(!/Ramble/.test(ask), 'never the control group');
+  assert.ok(!/VoxNote/.test(ask), 'never the control group');
   assert.equal(await say(t, 'yes'), false, 'yes means nothing before a pick');
   assert.equal(await say(t, '9'), false, 'not a listed number');
   const lines = ask.split('\n'); const n = lines.findIndex((l) => l.includes('…222'));

@@ -67,7 +67,7 @@ test('an owner that never reports back does not hold a recording forever', async
 });
 
 test('the control group is never shared: its recordings skip the claim', async () => {
-  const ben = account('ben'); ben.target = { jid: 'control@g.us', name: 'Ramble' }; const id = `M${++seq}`;
+  const ben = account('ben'); ben.target = { jid: 'control@g.us', name: 'VoxNote' }; const id = `M${++seq}`;
   claims.take(`${id}|${ben.normalize(note(id, true, 'control@g.us')).mediaSha || ''}`, 'someone-else');
   await ben.onMessage(note(id, true, 'control@g.us'), ben.sock);
   assert.deepEqual(ben.worked, [id]);

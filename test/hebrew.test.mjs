@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-he-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-he-'));
 process.env.TRUST_PROXY = '0';
 process.env.GITHUB_STARS = 'off';
 const registry = await import('../src/registry.js');

@@ -1,16 +1,15 @@
 # Security policy
 
-Ramble handles something sensitive: a live link to a person's WhatsApp.
+VoxNote handles something sensitive: a live link to a person's WhatsApp.
 
 ## Reporting a vulnerability
 
 Please report privately, not in a public issue:
 
-- **Email:** tomer.van.cohen@gmail.com with "Ramble security" in the subject.
 - **GitHub:** use *Report a vulnerability* under the repository's Security tab
   (private vulnerability reporting), if it is shown for this repository.
 
-You will get an answer within a few days. Coordinated disclosure is welcome;
+This personal fork has no guaranteed response time. Coordinated disclosure is welcome;
 please give a reasonable window to fix before publishing.
 
 ## What matters most here

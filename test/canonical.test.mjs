@@ -6,9 +6,9 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-canon-'));
-process.env.CANONICAL_HOST = 'ramble.baby';
-process.env.LEGACY_HOSTS = 'readable.live, www.readable.live';
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-canon-'));
+process.env.CANONICAL_HOST = 'voxnote.example';
+process.env.LEGACY_HOSTS = 'old.voxnote.example, www.old.voxnote.example';
 process.env.TRUST_PROXY = '0';
 const { createWebApp } = await import('../src/web.js');
 const server = createWebApp().listen(0, '127.0.0.1');
@@ -21,19 +21,19 @@ const ask = (host, path, method = 'GET') => new Promise((resolve, reject) => {
 });
 
 test('the old domain forwards to the new one and keeps the path and query', async () => {
-  const r = await ask('readable.live', '/i/abcd1234?x=1');
+  const r = await ask('old.voxnote.example', '/i/abcd1234?x=1');
   assert.equal(r.statusCode, 301);
-  assert.equal(r.headers.location, 'https://ramble.baby/i/abcd1234?x=1');
-  assert.equal((await ask('WWW.Readable.Live', '/privacy')).headers.location, 'https://ramble.baby/privacy');
+  assert.equal(r.headers.location, 'https://voxnote.example/i/abcd1234?x=1');
+  assert.equal((await ask('WWW.Old.VoxNote.Example', '/privacy')).headers.location, 'https://voxnote.example/privacy');
 });
 
 test('a form posted from a page still open on the old domain lands on the new home page, not on a cross-site refusal', async () => {
-  const r = await ask('readable.live', '/start', 'POST');
-  assert.equal(r.statusCode, 303); assert.equal(r.headers.location, 'https://ramble.baby/');
+  const r = await ask('old.voxnote.example', '/start', 'POST');
+  assert.equal(r.statusCode, 303); assert.equal(r.headers.location, 'https://voxnote.example/');
 });
 
 test('the current domain, unknown hosts and health checks are served in place', async () => {
-  assert.equal((await ask('ramble.baby', '/')).statusCode, 200);
+  assert.equal((await ask('voxnote.example', '/')).statusCode, 200);
   assert.equal((await ask('some-app.up.railway.app', '/')).statusCode, 200);
-  assert.equal((await ask('readable.live', '/healthz')).statusCode, 200);
+  assert.equal((await ask('old.voxnote.example', '/healthz')).statusCode, 200);
 });

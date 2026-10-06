@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'ramble-timing-'));
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'voxnote-timing-'));
 const { Tenant } = await import('../src/tenant.js');
 
 test('the timing line has every step, the sender delay, the retry if any — and no content', () => {

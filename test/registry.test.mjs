@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 
 const root = mkdtempSync(join(tmpdir(), 'readable-'));
 process.env.DATA_DIR = root;
-process.env.OWNER_NAME = 'Tomer';
+process.env.OWNER_NAME = 'Alex';
 process.env.TRANSCRIBE_LANGUAGE = 'he';
 // A pre-multi-tenant layout: session + settings directly in DATA_DIR.
 mkdirSync(join(root, 'baileys_auth'));
@@ -22,7 +22,7 @@ test('legacy single-account data is moved into tenants/default with session and 
   assert.ok(existsSync(join(root, 'tenants', 'default', 'baileys_auth', 'creds.json')));
   assert.ok(!existsSync(join(root, 'baileys_auth')));
   const rec = JSON.parse(readFileSync(join(root, 'tenants', 'default', 'tenant.json'), 'utf8'));
-  assert.equal(rec.id, 'default'); assert.equal(rec.label, 'Tomer'); assert.equal(rec.language, 'he');
+  assert.equal(rec.id, 'default'); assert.equal(rec.label, 'Alex'); assert.equal(rec.language, 'he');
   assert.ok(rec.manageKey.length >= 32);
   assert.equal(registry.migrateLegacy(), false, 'runs once');
 });

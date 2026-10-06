@@ -1,13 +1,9 @@
-# Working on Ramble
+# Working on VoxNote
 
-## ⛔ Never deploy without asking Tomer first
+## Deployment
 
-Every deploy restarts the server: every linked account drops and reconnects, and
-recordings that arrive meanwhile wait or are lost. That is downtime for real users.
-So **no `railway up` (or any other deploy) after a change, ever, unless Tomer said
-yes to that deploy in the conversation.** Deploys happen at night, when he asks for
-one. Commit and push as usual; then say what is waiting to go out and stop there.
-
+Deploy only when the repository owner explicitly requests it. Commit and push
+when requested; deployment can disconnect linked WhatsApp accounts.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first; its ground rules bind agents too.
 
@@ -28,7 +24,7 @@ Never name a fixture `real`.
 
 ## Commits
 
-- Author is Tomer Cohen <tomer.van.cohen@gmail.com>; never a work identity.
+- Use the repository owner’s configured Git identity for new commits; preserve upstream authorship.
 - `git config core.hooksPath .githooks` is expected to be set: the hooks refuse
   staged lines, messages and author identities that match the local
   `.private-terms` file. If a hook stops you, fix the content; don't bypass it.

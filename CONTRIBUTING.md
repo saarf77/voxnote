@@ -1,6 +1,6 @@
-# Contributing to Ramble
+# Contributing to VoxNote
 
-Thanks for helping. Ramble is small on purpose: it links to WhatsApp, turns
+Thanks for helping. VoxNote is small on purpose: it links to WhatsApp, turns
 recordings into readable text, and posts it back. Changes that keep it that way
 are the easiest to merge.
 

@@ -20,8 +20,8 @@ import { dirname, join } from 'node:path';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', '@whiskeysockets', 'baileys', 'lib', 'Signal');
 const MAX = 2_000; // entries per connection (the cache preallocates this many slots: keep it small, a socket is made every few seconds)
 const PATCHES = [
-  { file: 'lid-mapping.js', from: '            ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n            ttlAutopurge: true,\n            updateAgeOnGet: true\n', to: `            ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n            max: ${MAX}, // ramble: bounded, no timer per entry (scripts/patch-deps.mjs)\n            ttlAutopurge: false,\n            updateAgeOnGet: true\n` },
-  { file: 'libsignal.js', from: '        ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n        ttlAutopurge: true,\n        updateAgeOnGet: true\n', to: `        ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n        max: ${MAX}, // ramble: bounded, no timer per entry (scripts/patch-deps.mjs)\n        ttlAutopurge: false,\n        updateAgeOnGet: true\n` },
+  { file: 'lid-mapping.js', from: '            ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n            ttlAutopurge: true,\n            updateAgeOnGet: true\n', to: `            ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n            max: ${MAX}, // voxnote: bounded, no timer per entry (scripts/patch-deps.mjs)\n            ttlAutopurge: false,\n            updateAgeOnGet: true\n` },
+  { file: 'libsignal.js', from: '        ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n        ttlAutopurge: true,\n        updateAgeOnGet: true\n', to: `        ttl: 3 * 24 * 60 * 60 * 1000, // 7 days\n        max: ${MAX}, // voxnote: bounded, no timer per entry (scripts/patch-deps.mjs)\n        ttlAutopurge: false,\n        updateAgeOnGet: true\n` },
 ];
 let changed = 0;
 for (const p of PATCHES) {
