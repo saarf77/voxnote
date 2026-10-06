@@ -28,4 +28,4 @@ EXPOSE 4599
 
 # The entrypoint makes /data writable by "node" and drops root before starting.
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["node", "src/app.js"]
+CMD ["node", "--experimental-async-context-frame", "src/app.js"]

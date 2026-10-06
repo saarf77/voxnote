@@ -22,11 +22,13 @@ test('three hundred accounts coming back at once: never more than ten attempts i
 });
 
 test('an attempt that never gets an answer gives its slot back on its own', async () => {
+  const alive = setInterval(() => {}, 1000); // the slots' own timers are unref'd; on Node 22 the loop would otherwise drain mid-test
   const held = await Promise.all(Array.from({ length: 10 }, () => connectSlot(30)));
   const started = Date.now(); const next = await connectSlot(30); // only free once the ten time out
   assert.ok(Date.now() - started >= 20, 'waited for a slot'); next(); held.forEach((r) => r());
   await new Promise((r) => setTimeout(r, 5)); // the slots are handed back on the next turn
   assert.deepEqual(connectQueue(), { inFlight: 0, waiting: 0 });
+  clearInterval(alive);
 });
 
 test('sockets that dropped together do not come back together', () => {
