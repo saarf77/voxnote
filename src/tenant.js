@@ -585,6 +585,8 @@ Each one is a single word.
     const isVideo = n.type === 'video';
     const isMediaWeCare = n.isVoice || (isVideo && TRANSCRIBE_VIDEO);
     if (!isMediaWeCare) return;
+    // Where a recording's time goes, step by step (times only, never content): see logTiming.
+    n.t = { arrived: Date.now(), sentAt: Number(m.messageTimestamp) * 1000 || 0 };
     const inControl = this.target?.jid && n.chatId === this.target.jid;
 
     // Fingerprint every recording so a later forward into the control group can be traced back.
@@ -616,6 +618,7 @@ Each one is a single word.
     }
     const key = `${n.id}|${n.mediaSha || ''}`;
     if (!await this.claimRecording(key, n)) return;
+    if (n.t) n.t.claimed = Date.now();
     let posted = false;
     try { posted = await this.handleRecording(m, n, chatName, isVideo, inControl); }
     finally { claims.settle(key, this.id, !!posted); }
@@ -680,10 +683,14 @@ Each one is a single word.
     // cancel it and wait for it.
     const job = this.slots.run(() => globalSlots.run(async () => {
       if (this.stopped) return;
+      const mark = (k) => { if (n.t) n.t[k] = Date.now(); };
+      mark('slot');
       const media = await saveMedia(n.mediaNode, isVideo ? 'video' : 'audio', n.id, this.mediaDir, { signal: this.abort.signal });
       if (!media) return;
+      mark('downloaded');
       if (this.stopped) { deleteMediaFile(media); return; } // checkpoint: nothing leaves the box after stop()
       if (!await this.holdToRealLength(n, media, sec, isVideo)) { deleteMediaFile(media); return; }
+      mark('measured');
       return this.metered(n, () => this.transcribeAndDeliver(m, n, chatName, media, isVideo, inControl));
     }));
     this.inFlight.add(job);
@@ -720,6 +727,18 @@ Each one is a single word.
     return true;
   }
 
+  /**
+   * One line per delivered recording: how long each step took, in seconds. "wa" is WhatsApp's
+   * own delay (sent → arrived here; the sender's clock, whole seconds), "total" is ours
+   * (arrived → text posted). Times only — nothing about what was said or to whom.
+   */
+  logTiming(n, isVideo, retry) {
+    const t = n.t, s = (a, b) => (t[a] && t[b] ? ((t[b] - t[a]) / 1000).toFixed(1) : '–');
+    const start = t.claimed || t.arrived;
+    const wa = t.sentAt ? Math.max(0, (t.arrived - t.sentAt) / 1000).toFixed(0) : '–';
+    console.log(`${this.tag} ⏱️ ${n.seconds}s ${isVideo ? 'video' : 'voice'}${n.fromMe ? ' (own)' : ''}: wa ${wa} · claim ${s('arrived', 'claimed')} · queue ${(((t.slot || start) - start) / 1000).toFixed(1)} · download ${s('slot', 'downloaded')} · measure ${s('downloaded', 'measured')} · stt ${s('measured', 'transcribed')}${retry ? ` (${retry} retry)` : ''} · fix ${s('transcribed', 'corrected')} · send ${s('corrected', 'posted')} · total ${s('arrived', 'posted')}s`);
+  }
+
   /** Everything one recording sets off is billed to it, and the bill added to this account's total (dollars, no content). */
   metered(n, fn) {
     return meter(n.seconds, async () => {
@@ -744,6 +763,7 @@ Each one is a single word.
         compareModels: this.abModel || SECOND_READING_MODEL || null,
         signal: this.abort.signal,
       });
+      if (n.t) n.t.transcribed = Date.now();
       if (this.stopped || !run.text) return;
       Object.assign(keep, { model: run.model, text: run.text, usedFallback: run.usedFallback, check: run.check, retry: run.retry, compare: run.compare });
       if (run.retry) console.log(`${this.tag} 🔁 "${run.language || 'auto'}" came back in another script — the ${run.retry} retry answered`);
@@ -762,6 +782,7 @@ Each one is a single word.
       const rewritten = await rewriteTranscript(run.text, { ...who, names: this.namesHint(), alts });
       const content = rewritten || run.text;
       const summary = await summarizeTranscript(content, who);
+      if (n.t) n.t.corrected = Date.now();
       Object.assign(keep, { rewritten: rewritten || null, summary: summary || null });
       const body = summary ? `*${summary}*\n${content}` : content;
       this.trace('transcribed', { id: n.id, seconds: n.seconds, inControl: !!inControl, fromMe: n.fromMe, forwarded: n.forwarded, isGroup: n.isGroup, model: run.model, raw: run.text, alts, rewritten: rewritten || null, summary: summary || null });
@@ -774,6 +795,7 @@ Each one is a single word.
       let posted = false;
       if (inControl) await this.handleControlNote(n, content, body, isVideo, m);
       else posted = await this.deliver(n, chatName, body, isVideo, m);
+      if (n.t) { n.t.posted = Date.now(); this.logTiming(n, isVideo, run.retry); }
       // A/B: the comparison goes to the owner's own control group, never to a log.
       // Only an account explicitly under test sees the comparison message; the
       // second reading of a normal account is used silently by the rewrite.
