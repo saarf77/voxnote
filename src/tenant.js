@@ -741,7 +741,8 @@ Each one is a single word.
         signal: this.abort.signal,
       });
       if (this.stopped || !run.text) return;
-      Object.assign(keep, { model: run.model, text: run.text, usedFallback: run.usedFallback, check: run.check, compare: run.compare });
+      Object.assign(keep, { model: run.model, text: run.text, usedFallback: run.usedFallback, check: run.check, retry: run.retry, compare: run.compare });
+      if (run.retry) console.log(`${this.tag} 🔁 "${run.language || 'auto'}" came back in another script — the ${run.retry} retry answered`);
       if (run.usedFallback) console.warn(`${this.tag} ⚠️ ${planLabel(plan)} failed — the fallback provider answered`);
       if (!run.check.ok) {
         this.stats.dropped++;

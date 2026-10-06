@@ -115,7 +115,7 @@ function combineSignals(signal, timeoutMs) {
   return { signal: combined, done: () => clearTimeout(timer) };
 }
 
-async function postTranscription(absPath, cfg, { language, model, signal } = {}) {
+async function postTranscription(absPath, cfg, { language, model, prompt, signal } = {}) {
   const ext = absPath.split('.').pop().toLowerCase();
   const buf = readFileSync(absPath);
   const form = new FormData();
@@ -124,6 +124,7 @@ async function postTranscription(absPath, cfg, { language, model, signal } = {})
   form.append('response_format', 'text');
   const lang = language === undefined ? cfg.language : language;
   if (lang) form.append('language', lang);
+  if (prompt) form.append('prompt', prompt);
 
   const { signal: sig, done } = combineSignals(signal, REQUEST_TIMEOUT_MS);
   try {
@@ -146,6 +147,26 @@ async function postTranscription(absPath, cfg, { language, model, signal } = {})
   }
 }
 
+// A one-line hint in the language itself: it pulls the model towards writing that language's
+// script when an accent makes it hesitate. Only languages with a hint get the hinted retry.
+const LANGUAGE_HINTS = {
+  he: 'הודעה קולית בעברית.',
+  ar: 'رسالة صوتية باللغة العربية.',
+  ru: 'Голосовое сообщение на русском языке.',
+  en: 'A voice message in English.',
+};
+// The second model asked when the first keeps answering in another language (same provider).
+const PINNED_RETRY_MODEL = process.env.PINNED_RETRY_MODEL ?? 'gpt-4o-mini-transcribe';
+
+/** The retries for a language the account set itself, in order. Pure, exported for tests. */
+export function pinnedRetries(host, lang) {
+  const tries = [];
+  if (LANGUAGE_HINTS[lang]) tries.push({ label: 'hint', model: host.model, prompt: LANGUAGE_HINTS[lang] });
+  const openai = /api\.openai\.com/.test(host.baseUrl || '');
+  if (openai && PINNED_RETRY_MODEL && PINNED_RETRY_MODEL !== host.model) tries.push({ label: PINNED_RETRY_MODEL, model: PINNED_RETRY_MODEL, prompt: LANGUAGE_HINTS[lang] });
+  return tries;
+}
+
 /**
  * Transcribe one recording for one account.
  *
@@ -155,13 +176,14 @@ async function postTranscription(absPath, cfg, { language, model, signal } = {})
  * @param {'free'|'pro'} o.plan         which provider to use
  * @param {string} [o.language]         '' = auto-detect; undefined = provider default
  * @param {(text:string, ctx:{language:string})=>{ok:boolean,reason?:string}} [o.validate]
- *        sanity gate; a failure on a forced language triggers one auto-detect retry
+ *        sanity gate; a failure on a forced language triggers a retry
+ *        on a language the account set itself, the retries keep that language (see below)
  * @param {string|string[]} [o.compareModels]  also transcribe with these models, for a comparison
  *        (a comma-separated string is fine; a `whisper*` model is sent to the free
  *        provider, anything else to this account's own provider)
  * @param {AbortSignal} [o.signal]
  * @returns {Promise<{text:string, model:string, check:object, language:string,
- *                    usedFallback:boolean, compare:{model:string,text:string}[]}>}
+ *                    usedFallback:boolean, retry:string|null, compare:{model:string,text:string}[]}>}
  */
 export async function transcribeRun({ absPath, isVideo = false, plan = 'pro', language, validate, compareModels = null, signal }) {
   const cfg = configFor(plan);
@@ -191,17 +213,32 @@ export async function transcribeRun({ absPath, isVideo = false, plan = 'pro', la
     }
 
     const lang = language === undefined ? cfg.language : language;
-    let check = validate ? validate(text, { language: lang }) : { ok: true };
+    let check = validate ? validate(text, { language: lang }) : { ok: true }, retry = null;
     if (!check.ok && lang && validate) {
-      // A forced language on a recording in another language yields junk; retry
-      // once letting the model decide, inside the same prepared-audio scope.
-      const alt = await postTranscription(path, usedFallback ? fallback : cfg, { language: '', signal }).catch(() => null);
-      const altCheck = alt ? validate(alt, { language: '' }) : { ok: false, reason: 'empty' };
-      if (altCheck.ok) { text = alt; check = altCheck; }
-      else check = { ok: false, reason: `${check.reason}; auto-detect: ${altCheck.reason}` };
+      const host = usedFallback ? fallback : cfg;
+      if (language) {
+        // The account's owner set this language: their contacts speak it, even with an
+        // accent the model mistakes for another language. Never trade it for another
+        // language; ask again in the same one, nudged, then on a second model.
+        const reasons = [check.reason];
+        for (const t of pinnedRetries(host, lang)) {
+          const alt = await postTranscription(path, host, { language: lang, model: t.model, prompt: t.prompt, signal }).catch(() => null);
+          const altCheck = alt ? validate(alt, { language: lang }) : { ok: false, reason: 'empty' };
+          if (altCheck.ok) { text = alt; check = altCheck; model = t.model; retry = t.label; break; }
+          reasons.push(`${t.label}: ${altCheck.reason}`);
+        }
+        if (!check.ok) check = { ok: false, reason: reasons.join('; ') };
+      } else {
+        // A provider-wide default language on a recording in another language yields
+        // junk; retry once letting the model decide, inside the same prepared-audio scope.
+        const alt = await postTranscription(path, host, { language: '', signal }).catch(() => null);
+        const altCheck = alt ? validate(alt, { language: '' }) : { ok: false, reason: 'empty' };
+        if (altCheck.ok) { text = alt; check = altCheck; retry = 'auto-detect'; }
+        else check = { ok: false, reason: `${check.reason}; auto-detect: ${altCheck.reason}` };
+      }
     }
 
-    return { text, model, check, language: lang, usedFallback, compare: await comparePromise };
+    return { text, model, check, language: lang, usedFallback, retry, compare: await comparePromise };
   } finally {
     cleanup();
   }
