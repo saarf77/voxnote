@@ -59,3 +59,10 @@ test('an account on auto-detect is untouched: one call, whatever the language', 
   assert.equal(r.text, ARABIC); assert.equal(r.check.ok, true); assert.equal(r.retry, null);
   assert.equal(calls.length, 1); assert.equal(calls[0].language, null);
 });
+
+test('a retry that only says the hint back (audio with no speech) is not a transcript', async () => {
+  const calls = fake([ARABIC, 'הודעה קולית בעברית.', 'הודעה קולית בעברית']);
+  const r = await transcribeRun({ absPath: audio, language: 'he', validate });
+  assert.equal(r.check.ok, false); assert.match(r.check.reason, /repeated the hint/);
+  assert.equal(calls.length, 3);
+});

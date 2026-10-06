@@ -158,6 +158,8 @@ const LANGUAGE_HINTS = {
 // The second model asked when the first keeps answering in another language (same provider).
 const PINNED_RETRY_MODEL = process.env.PINNED_RETRY_MODEL ?? 'gpt-4o-mini-transcribe';
 
+const bare = (t) => String(t || '').replace(/[^\p{L}\p{N}]/gu, '');
+
 /** The retries for a language the account set itself, in order. Pure, exported for tests. */
 export function pinnedRetries(host, lang) {
   const tries = [];
@@ -223,7 +225,9 @@ export async function transcribeRun({ absPath, isVideo = false, plan = 'pro', la
         const reasons = [check.reason];
         for (const t of pinnedRetries(host, lang)) {
           const alt = await postTranscription(path, host, { language: lang, model: t.model, prompt: t.prompt, signal }).catch(() => null);
-          const altCheck = alt ? validate(alt, { language: lang }) : { ok: false, reason: 'empty' };
+          // On audio with no speech the model may simply say the hint back: that is no transcript.
+          const echo = alt && t.prompt && bare(alt).includes(bare(t.prompt));
+          const altCheck = !alt ? { ok: false, reason: 'empty' } : echo ? { ok: false, reason: 'repeated the hint' } : validate(alt, { language: lang });
           if (altCheck.ok) { text = alt; check = altCheck; model = t.model; retry = t.label; break; }
           reasons.push(`${t.label}: ${altCheck.reason}`);
         }
