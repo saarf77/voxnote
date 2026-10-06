@@ -11,10 +11,12 @@ into WhatsApp as you.
 
 - **Private chats**: every voice note, yours and theirs, gets its text under it, so
   both sides can read it.
-- **Groups** are off, your own voice notes included, until you switch one on from a
-  private control group only you are in (`include`, or `private` to get the text only
-  there), or write `groups mine` to transcribe just your own voice notes in every
-  group. Nothing is ever posted in a chat to control it.
+- **Groups**: your own voice notes get their text; everyone's in a group you switch
+  on from a private control group only you are in (`include`, or `private` to get the
+  text only there). Nothing is ever posted in a chat to control it.
+- **Settings page**: right after linking, and later from `settings` in the control
+  group: private chats and groups each on or off, only your voice notes or everyone's,
+  all chats or the ones you pick, and the text in the chat or only to you.
 - Recordings are deleted the moment they're transcribed. Nothing is stored.
 
 ## Using the hosted service
@@ -28,6 +30,7 @@ message explains everything:
 
 | Do this | Effect |
 |---|---|
+| Write `settings` in the *Ramble* group | a link to the settings page (signs you in, good for 24 hours) |
 | Write `exclude Mom` / `include Mom` in the *Ramble* group (a contact's or a group's name, the name a business shows, or a phone number) | lists the matching chats if there are several, then asks; `yes` switches that chat. An excluded chat is not transcribed at all, your own voice notes included |
 | Forward a voice note from any chat into the *Ramble* group | its text + whether that chat is transcribed; reply `exclude` / `include` to switch it (it asks first) |
 | Write `exclude` or `include` alone | what is excluded / which groups are transcribed |
@@ -36,7 +39,7 @@ message explains everything:
 | Write `leave` in the *Ramble* group, then `yes` | unlinks the device and erases your account |
 | Write `help` in the *Ramble* group | the list of commands |
 | Write `pause` / `resume` in the *Ramble* group | stops all transcription for a while / starts it again |
-| Write `groups`, `groups off`, `groups mine` or `groups private` in the *Ramble* group | shows / sets what happens in groups you haven't switched: nothing (new accounts), your own voice notes with the text in the group, or everyone's voice notes with the text only in the *Ramble* group |
+| Write `groups`, `groups off`, `groups mine`, `groups all` or `groups private` in the *Ramble* group | shows / sets what happens in groups you haven't switched: nothing, your own voice notes with the text in the group (new accounts), everyone's with the text in the group, or everyone's with the text only in the *Ramble* group |
 | Write `language` in the *Ramble* group; `language hebrew` (or `auto`) | shows / pins the transcription language |
 | In *Notes to self*: `names: David, Eden` | teaches the spelling of names (`names` lists, `names -X` removes) |
 | Record a voice note *in* the *Ramble* group: "send Eden that I'm on my way" | finds Eden in your contacts and shows who and what; reply `yes` (or a number, if several match) and it texts her, as you. Nothing is sent without your yes. Reply `undo` to a sent one to delete it |
@@ -46,7 +49,7 @@ one text: the sender's account posts it, and the recipient's steps in only if th
 sender's cannot (chat off, daily limit, a failure).
 
 Every command is one English word (`on`, `off`, `delete`, `yes`, `no`, `undo`,
-`leave`, `help`, `language`, `pause`, `resume`, `include`, `exclude`, `private`, `groups`, `names`): no synonyms and no translations, so it is never a question
+`leave`, `help`, `settings`, `language`, `pause`, `resume`, `include`, `exclude`, `private`, `groups`, `names`): no synonyms and no translations, so it is never a question
 which to write. A *spoken* answer to a question may be a Hebrew yes/no or a number word.
 
 To stop using it, write `leave` in the *Ramble* group and confirm with `yes`: the
@@ -142,8 +145,8 @@ reserves audio seconds *before* calling any provider, against three ceilings:
 
 Reservations are atomic, so recordings arriving together cannot all slip under a
 ceiling. The same recording sent twice (usually a forward into the control group)
-is served from memory and costs nothing. Groups are off by default, so a busy
-group only costs anything once its owner switches it on. `/admin` shows minutes
+is served from memory and costs nothing. In groups only the owner's own voice notes
+are transcribed by default, so a busy group costs little until its owner switches it on. `/admin` shows minutes
 used today, per account and for the server.
 
 Two plans decide which provider an account uses: `pro` (the better, paid model)

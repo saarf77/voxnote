@@ -35,6 +35,7 @@ import { normalizePhone } from './pairing.js';
 import { LOGO_MARK_SVG } from './logo.js';
 import { extractDictation, matchContacts, looksLikeDictation, norm as normName } from './dictate.js';
 import { meter, bill } from './cost.js';
+import { readSettings, applyPatch, decide, whereOf, groupsMode, setGroupsMode, legacyGroups, settingsUrl } from './settings.js';
 
 // Bounded work: at most this many recordings in flight per account, and across
 // the whole process, so one flooded account can't starve the others or the box.
@@ -134,9 +135,9 @@ export class Tenant {
       // Minutes a day for this account alone, set from the admin page; 0 = the server's default (plus invite bonuses).
       capMinutes: Number.isInteger(rec.capMinutes) && rec.capMinutes > 0 ? rec.capMinutes : 0,
       firstNoteAt: Number(rec.firstNoteAt) || 0, // the owner's first voice note in the group: the end of onboarding
-      // Groups nobody switched: 'off' (nothing at all; new accounts) or 'mine' (the owner's own notes get their text).
-      // Accounts from before the setting existed keep what they had: their own notes everywhere.
-      groups: rec.groups === 'off' || rec.groups === 'private' ? rec.groups : 'mine',
+      // What is transcribed and where the text goes, by kind of chat (see settings.js). An account from
+      // before the settings page keeps what its "groups" setting meant.
+      settings: readSettings(rec),
       paused: rec.paused === true, // the owner wrote "pause": nothing is transcribed until "resume"
       // Who this account is, for the admin page: the linked number and the owner's WhatsApp name.
       phone: /^\d{6,15}$/.test(rec.phone || '') ? rec.phone : '', waName: String(rec.waName || '').slice(0, 80),
@@ -157,6 +158,7 @@ export class Tenant {
     this.contactNames = new Map(loadJson(this.f('contacts.json'), []));
     this.savedNames = new Set(loadJson(this.f('saved.json'), []));   // contacts whose name came from the phone's address book (partial: only those synced since linking)
     this.groupNames = new Map();
+    this.groupSizes = new Map(); // group → how many are in it, for the settings page's list
     this.altIds = new Map(loadJson(this.f('altids.json'), [])); // phone id ⇄ lid of the same private chat
     this.activity = new Map(loadJson(this.f('activity.json'), [])); // private chat → how many messages the owner sent it (a count, no content): ranks contacts for a dictated message
     this.dictated = new Map();   // our confirmation post id → the message we sent for the owner (memory only, for "undo")
@@ -261,6 +263,41 @@ export class Tenant {
     } catch (e) { console.warn(`${this.tag} could not set the group icon: ${firstLine(e)}`); }
   }
 
+  /**
+   * A link that opens the control group in WhatsApp, for the button on the settings page: the
+   * group's invite link, made only once joining needs the owner's approval, so a link that gets
+   * out lets nobody in. Null when WhatsApp would not do either.
+   */
+  groupLink() {
+    const url = (code) => `https://chat.whatsapp.com/${code}`;
+    if (this.target?.invite) return Promise.resolve(url(this.target.invite));
+    if (!this.target?.jid || !this.sock || !this.ready) return Promise.resolve(null);
+    this._linkP ??= (async () => {
+      const jid = this.target.jid, within = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), 15000))]);
+      try {
+        await within(this.sock.groupJoinApprovalMode(jid, 'on'));
+        const code = await within(this.sock.groupInviteCode(jid));
+        if (!code || this.target?.jid !== jid) return null;
+        this.target.invite = code; saveJson(this.f('target.json'), this.target);
+        console.log(`${this.tag} 🔗 control group link made (joining needs approval)`);
+        return url(code);
+      } catch (e) { console.warn(`${this.tag} no control group link: ${firstLine(e)}`); return null; }
+      finally { this._linkP = null; }
+    })();
+    return this._linkP;
+  }
+
+  /** A new control group is pinned to the top of the owner's chats. Best effort: right after linking, WhatsApp may not take it yet. */
+  pinControlGroup(delays = [15e3, 120e3]) {
+    const jid = this.target?.jid; if (!jid) return;
+    const attempt = async (i) => {
+      if (this.stopped || this.target?.jid !== jid || this.target.pinned) return;
+      try { await this.sock.chatModify({ pin: true }, jid); this.target.pinned = Date.now(); saveJson(this.f('target.json'), this.target); console.log(`${this.tag} 📌 control group pinned`); }
+      catch (e) { if (i < delays.length) setTimeout(() => attempt(i + 1), delays[i]).unref?.(); else console.warn(`${this.tag} could not pin the control group: ${firstLine(e)}`); }
+    };
+    attempt(0);
+  }
+
   /** First link: create the control group with just the owner in it and post the welcome. */
   async createControlGroup() {
     try {
@@ -271,7 +308,9 @@ export class Tenant {
       this.needsManualGroup = false;
       console.log(`${this.tag} 🎯 control group created`);
       await this.setGroupIcon();
+      await this.groupLink(); // the settings page's button opens the group through it
       await this.sendPaced(g.id, { text: this.welcomeText() });
+      this.pinControlGroup();
     } catch (e) {
       this.needsManualGroup = true;
       console.warn(`${this.tag} could not create the control group (${firstLine(e)}) — user must create one and post #transcribe`);
@@ -290,24 +329,23 @@ export class Tenant {
     if (this.ownerLocale() === 'he') return `ברוכים הבאים ל-*${PRODUCT_NAME}* ✅
 החיבור לוואטסאפ הושלם. הקבוצה הזו היא לוח הבקרה, ואין בה אף אחד מלבדכם.
 
-• כל הודעה קולית בצ'אטים פרטיים מתומללת, והטקסט מופיע ממש מתחת להקלטה.
-• כדי להפעיל תמלול בקבוצה, כתבו כאן *include* ואת שם הקבוצה, למשל: *include משפחת כהן*. אפשר גם לכתוב *private* ואת שם הקבוצה, כדי לקבל את התמלול רק כאן.
-• רוצים לתמלל רק את ההודעות הקוליות שלכם, בכל הקבוצות? כתבו כאן *groups mine*.
-• להפסקת השימוש ב-${PRODUCT_NAME}, כתבו כאן *leave*.
-• לרשימת הפקודות המלאה, כתבו כאן *help*.
+• הודעות קוליות מקבלות טקסט ממש מתחתיהן: של כולם בצ'אטים פרטיים, ושלכם בקבוצות.
+• כדי לבחור מה מתומלל ואיפה הטקסט מופיע, כתבו כאן *settings*.
+• כדי לתמלל בקבוצה מסוימת את ההודעות של כולם, כתבו כאן *include* ואת שם הקבוצה.
+• לרשימת הפקודות, כתבו כאן *help*. להפסקת השימוש ב-${PRODUCT_NAME}, כתבו *leave*.
 
-הקלטות נמחקות ברגע שהן הופכות לטקסט.
+ההודעות הקוליות נמחקות ברגע שהן הופכות לטקסט.
 
 👉 נסו עכשיו: הקליטו הודעה קולית כאן, בקבוצה הזו.`;
     return `Welcome to *${PRODUCT_NAME}* ✅
 It's linked to your WhatsApp. This group is your control panel, and only you are in it.
 
-• Every voice note in a private chat, yours and theirs, gets its text right under it.
-• Nothing is transcribed in groups. To turn one on, write *include* and the group's name here, or *private* and the name to get the text only here. *groups mine* transcribes just your own voice notes, in every group.
-• To stop using ${PRODUCT_NAME}, write *leave* here.
-• For the list of commands, write *help* here.
+• Voice notes get their text right under them: everyone's in private chats, your own in groups.
+• To choose what gets transcribed and where the text appears, write *settings* here.
+• To transcribe everyone's voice notes in one group, write *include* and its name here.
+• For the list of commands, write *help* here. To stop using ${PRODUCT_NAME}, write *leave*.
 
-Recordings are deleted the moment they become text.
+Voice notes are deleted the moment they become text.
 
 👉 Try it now: record a voice note right here, in this group.`;
   }
@@ -316,8 +354,9 @@ Recordings are deleted the moment they become text.
     if (this.ownerLocale() === 'he') return `*הפקודות של ${PRODUCT_NAME}*
 כל פקודה היא מילה אחת באנגלית.
 
-• הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה, או מספר טלפון (למשל *exclude אמא*), ו-*include* כדי להחזיר. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההקלטות שלך. קבוצות מתחילות כבויות, צ'אטים פרטיים דולקים.
-• קבוצות, *groups*: מה קורה בקבוצות שלא הוגדרו אחרת. *groups off*: כלום. *groups mine*: רק ההודעות הקוליות שלך, עם טקסט בקבוצה. *groups private*: ההודעות הקוליות של כולם, עם הטקסט רק כאן.
+• הגדרות, *settings*: לכתוב כאן כדי לקבל קישור לדף ההגדרות, ושם לבחור מה מתומלל, של מי, ואיפה הטקסט מופיע.
+• הפעלה וכיבוי של צ'אט, *include* / *exclude*: לכתוב כאן *exclude* ואת שם איש הקשר או הקבוצה, או מספר טלפון (למשל *exclude אמא*), ו-*include* כדי לתמלל בו את כולם. תמיד נשאלת קודם שאלה, ועונים *yes*. צ'אט מוחרג לא מתומלל בכלל, גם לא ההודעות הקוליות שלך.
+• קבוצות, *groups*: מה קורה בקבוצות שלא הוגדרו אחרת. *groups off*: כלום. *groups mine*: רק ההודעות הקוליות שלך, עם טקסט בקבוצה. *groups all*: של כולם, עם טקסט בקבוצה. *groups private*: של כולם, עם הטקסט רק כאן.
 • תמלול בפרטיות, *private*: לכתוב כאן *private* ואת השם, והטקסט של כל הקלטה שם, גם שלך, יגיע רק לכאן, בלי שום דבר בצ'אט ההוא.
 • מחיקת טקסט, *delete*: לענות כך לכל טקסט ש-${PRODUCT_NAME} פרסם, בכל צ'אט, והוא נמחק אצל כולם.
 • שפת התמלול, *language*: לכתוב כאן *language* כדי לראות אותה, ו-*language hebrew* (או שפה אחרת, או *auto*) כדי לקבוע. בדרך כלל אין צורך: השפה מזוהה לבד.
@@ -327,8 +366,9 @@ Recordings are deleted the moment they become text.
     return `*${PRODUCT_NAME} commands*
 Each one is a single word.
 
-• *include* / *exclude*: write it here with a contact's or a group's name, or a phone number (*exclude Mom*), to switch that chat, or reply it to a forwarded recording's text. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included. Groups start off, private chats start on.
-• *groups*: what happens in groups you haven't switched. *groups off*: nothing. *groups mine*: your own voice notes, with the text in the group. *groups private*: everyone's voice notes, with the text only here.
+• *settings*: write it here for a link to your settings page, to choose what gets transcribed, whose, and where the text appears.
+• *include* / *exclude*: write it here with a contact's or a group's name, or a phone number (*exclude Mom*), to switch that chat, or reply it to a forwarded recording's text. *include* transcribes everyone there. It always asks first; answer *yes*. An excluded chat is not transcribed at all, your own voice notes included.
+• *groups*: what happens in groups you haven't switched. *groups off*: nothing. *groups mine*: your own voice notes, with the text in the group. *groups all*: everyone's, with the text in the group. *groups private*: everyone's, with the text only here.
 • *private*: write it here with a name, and the text of every recording in that chat, yours included, comes only here; nothing is posted there.
 • *delete*: reply with it to any text ${PRODUCT_NAME} posted, in any chat, and it's removed for everyone.
 • *language*: write it here to see the transcription language, and *language hebrew* (or another, or *auto*) to fix it. Rarely needed: it's detected on its own.
@@ -355,19 +395,24 @@ Each one is a single word.
     const say = {
       mine: he ? "👥 בכל קבוצה (חוץ מאלה שהוחרגו) ההודעות הקוליות שלך מקבלות טקסט מתחתיהן. של אחרים מתומללות רק בקבוצות שהופעלו עם *include*."
         : "👥 In every group (except excluded ones), your own voice notes get their text under them. Other people's are transcribed only in groups you *include*.",
+      all: he ? '👥 בכל קבוצה (חוץ מאלה שהוחרגו) כל הודעה קולית, שלך ושל כולם, מקבלת טקסט מתחתיה.'
+        : "👥 In every group (except excluded ones), every voice note, yours and everyone's, gets its text under it.",
       private: he ? "👥 בכל קבוצה שלא הוגדרה אחרת, כל הודעה קולית, שלך ושל כולם, מתומללת אל הקבוצה הזו בלבד. שום דבר לא נכתב בקבוצות עצמן."
         : "👥 In every group you haven't switched, every voice note, yours and everyone's, is transcribed into this group only. Nothing is posted in the groups.",
       off: he ? "👥 שום דבר לא מתומלל בקבוצות, לא שלך ולא של אחרים, אלא אם קבוצה הופעלה עם *include* (טקסט בקבוצה) או *private* (טקסט כאן)."
         : "👥 Nothing is transcribed in groups, yours or anyone's, unless you *include* one (text in the group) or make it *private* (text here).",
     };
-    if (how === 'set') return `${he ? '👥 בוצע: ' : '👥 Done: '}${say[g].replace(/^👥 /, '')}`;
+    // Groups picked on the settings page: only those, whichever of these is set.
+    const picked = g !== 'off' && this.settings.groups.some.length ? `\n${he ? 'רק בקבוצות שבחרת בדף ההגדרות (*settings*).' : 'Only in the groups you picked on the settings page (*settings*).'}` : '';
+    if (how === 'set') return `${he ? '👥 בוצע: ' : '👥 Done: '}${say[g].replace(/^👥 /, '')}${picked}`;
     const options = {
       off: he ? 'שום דבר בקבוצות: *groups off*' : '*groups off*: nothing in groups',
       mine: he ? 'רק ההודעות הקוליות שלך, עם טקסט בקבוצה: *groups mine*' : '*groups mine*: just your own voice notes, with the text in the group',
+      all: he ? 'ההודעות הקוליות של כולם, עם טקסט בקבוצה: *groups all*' : "*groups all*: everyone's voice notes, with the text in the group",
       private: he ? 'כל ההודעות הקוליות, עם הטקסט רק כאן: *groups private*' : "*groups private*: everyone's voice notes, with the text only here",
     };
     const others = Object.keys(options).filter((k) => k !== g).map((k) => `• ${options[k]}`).join('\n');
-    return `${say[g]}\n${he ? 'אפשר גם:' : 'Or:'}\n${others}`;
+    return `${say[g]}${picked}\n${he ? 'אפשר גם:' : 'Or:'}\n${others}`;
   }
 
   /** Answer "language" (show it) or "language <name>" (set it). */
@@ -391,7 +436,7 @@ Each one is a single word.
   }
 
   // ---------- state persistence ----------
-  persistRecord() { saveJson(this.f('tenant.json'), { id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, paused: this.paused, groups: this.groups, capMinutes: this.capMinutes || undefined, firstNoteAt: this.firstNoteAt, phone: this.phone, waName: this.waName }); }
+  persistRecord() { saveJson(this.f('tenant.json'), { settings: this.settings, id: this.id, label: this.label, language: this.language, createdAt: this.createdAt, manageKey: this.manageKey, linkedAt: this.linkedAt, locale: this.locale, plan: this.plan, abModel: this.abModel, keepAudio: this.keepAudio, inviteCode: this.inviteCode, referredBy: this.referredBy, invited: this.invited, bonusMinutes: this.bonusMinutes, paused: this.paused, groups: legacyGroups(this.settings), capMinutes: this.capMinutes || undefined, firstNoteAt: this.firstNoteAt, phone: this.phone, waName: this.waName }); }
 
   /** Today's ceiling for this account: the server default plus whatever invites earned. */
   dailyCapMinutes() { return this.capMinutes > 0 ? this.capMinutes : DAILY_MINUTES_CAP > 0 ? DAILY_MINUTES_CAP + this.bonusMinutes : 0; }
@@ -606,13 +651,8 @@ Each one is a single word.
     // Fingerprint every recording so a later forward into the control group can be traced back.
     if (!inControl && n.mediaSha) this.recordMediaSource(n.mediaSha, { chatId: n.chatId, name: chatName });
 
-    let want;
-    if (inControl) want = true;                                                       // probe: always
-    else if (this.isExcluded(n)) want = false;                                        // excluded by the owner: nothing, their own notes included
-    else if (n.fromMe && n.isVoice) want = !n.isGroup || this.groups === 'mine' || this.enabled.has(n.chatId) || this.isPrivateHere(n); // owner's notes: private chats, and groups by the setting
-    else if (n.isGroup) want = (this.enabled.has(n.chatId) || this.isPrivateHere(n)) && !this.archived.has(n.chatId);
-    else want = !this.archived.has(n.chatId);
-    if (!want) return;
+    n.route = this.route(n); // 'chat', 'me', or null: not transcribed
+    if (!n.route) return;
     // Paused by the owner: nothing is transcribed, nowhere. A recording in the group gets a reminder.
     if (this.paused) {
       if (inControl && n.fromMe) this.sendPaced(n.chatId, { text: this.pauseReply('paused-note') }, { quoted: m }).catch(() => {});
@@ -622,9 +662,9 @@ Each one is a single word.
     // One recording, one text: the control group is ours alone, everywhere else another
     // account on this server may be looking at the very same message.
     if (inControl) { await this.handleRecording(m, n, chatName, isVideo, inControl); return; }
-    // Private mode: every recording in the chat, the owner's own included, has its text come to the control
+    // Only to me: every recording in the chat, the owner's own included, has its text come to the control
     // group only. That is not a post in the chat, so it takes no part in deciding who posts there.
-    if (this.isPrivateHere(n)) {
+    if (n.route === 'me') {
       // A copy in the control group would outlive a disappearing recording: none is made.
       if (n.expiration) { console.log(`${this.tag} ⏭️ private transcript skipped (disappearing chat)`); return; }
       await this.handleRecording(m, n, chatName, isVideo, inControl);
@@ -854,7 +894,7 @@ Each one is a single word.
   /** Resolves true once the text is in the chat (another account may be waiting to hear). */
   deliver(n, chatName, text, isVideo, original) {
     if (this.stopped) return false;
-    if (this.isPrivateHere(n)) return this.deliverPrivate(n, chatName, text, isVideo);
+    if ((n.route ?? this.route(n)) === 'me') return this.deliverPrivate(n, chatName, text, isVideo);
     const body = n.fromMe ? `${SELF_PREFIX}${text}` : `${isVideo ? '🎬' : '🎙️'} *${n.senderName || chatName || 'unknown'}*: ${text}`;
     // In a disappearing chat the text disappears on the same timer as the recording.
     const opts = { quoted: original, ...(n.expiration ? { ephemeralExpiration: n.expiration } : {}) };
@@ -1070,12 +1110,45 @@ Each one is a single word.
   isExcluded(n) { return this.muted.has(n.chatId) || (!!n.chatAlt && this.muted.has(n.chatAlt)); }
   /** True when this recording's chat is in private mode, under either of its ids. */
   isQuiet(n) { return this.quiet.has(n.chatId) || (!!n.chatAlt && this.quiet.has(n.chatAlt)); }
-  /** Private delivery for this recording: its chat is in private mode, or it is a group nobody switched and the setting is "groups private". */
-  isPrivateHere(n) { return this.isQuiet(n) || (n.isGroup && this.groups === 'private' && !this.enabled.has(n.chatId) && !this.isExcluded(n)); }
-  /** What happens to other people's recordings in this chat: 'included' (text in the chat), 'private' (text here), or 'off'. */
-  chatMode(chatId) { return this.muted.has(chatId) ? 'off' : this.quiet.has(chatId) ? 'private' : this.chatIncluded(chatId) ? 'included' : chatId.endsWith('@g.us') && this.groups !== 'off' ? this.groups : 'off'; }
-  /** Whether other people's recordings in this chat are transcribed. */
-  chatIncluded(chatId) { return chatId.endsWith('@g.us') ? this.enabled.has(chatId) && !this.muted.has(chatId) : !this.muted.has(chatId); }
+  /** True when this recording's chat was included by the owner, under either of its ids. */
+  isIncluded(n) { return this.enabled.has(n.chatId) || (!!n.chatAlt && this.enabled.has(n.chatAlt)); }
+  /** Whether this chat is among the ones picked on the settings page (always, when none were picked). Notes to self always is. */
+  isChosen(n, section) {
+    if (!section.some.length || this.isSelfChat(n.chatId)) return true;
+    return [n.chatId, n.chatAlt, this.altIds.get(n.chatId)].some((id) => id && section.some.includes(id));
+  }
+  /**
+   * Where one recording's text goes: 'chat' (under it), 'me' (the control group only), or null (not
+   * transcribed). The control group is always 'chat'. Then, in order: excluded chats get nothing, not
+   * even the owner's own notes; other people's recordings in archived chats are left alone; a chat in
+   * private mode is everyone's, to me; an included chat is everyone's, in the chat; everything else
+   * follows the settings. (Choosing "only to me" on the settings page moves included chats to private mode.)
+   */
+  route(n) {
+    if (this.target?.jid && n.chatId === this.target.jid) return 'chat';
+    if (this.isExcluded(n)) return null;
+    if (!n.fromMe && this.archived.has(n.chatId)) return null;
+    if (this.isQuiet(n)) return 'me';
+    if (this.isIncluded(n)) return 'chat';
+    const section = this.settings[n.isGroup ? 'groups' : 'chats'];
+    return decide(section, { fromMe: n.fromMe, chosen: this.isChosen(n, section) });
+  }
+  /** Private delivery for this recording. */
+  isPrivateHere(n) { return this.route(n) === 'me'; }
+  /** What happens in this chat: 'included' (everyone's, text in the chat), 'private' (everyone's, text here), 'mine' (the owner's own only), or 'off'. */
+  chatMode(chatId) {
+    if (this.muted.has(chatId)) return 'off';
+    if (this.quiet.has(chatId)) return 'private';
+    const n = { chatId, chatAlt: null, isGroup: chatId.endsWith('@g.us') }, section = this.settings[n.isGroup ? 'groups' : 'chats'];
+    const theirs = this.enabled.has(chatId) ? 'chat' : decide(section, { fromMe: false, chosen: this.isChosen(n, section) });
+    if (theirs) return theirs === 'me' ? 'private' : 'included';
+    return decide(section, { fromMe: true, chosen: this.isChosen(n, section) }) ? 'mine' : 'off';
+  }
+  /** Whether other people's recordings in this chat get their text in the chat. */
+  chatIncluded(chatId) { return this.chatMode(chatId) === 'included'; }
+  /** What happens in groups nobody switched, in the words of the "groups" command: off, mine, all or private. */
+  get groups() { return groupsMode(this.settings); }
+  set groups(mode) { this.settings = setGroupsMode(this.settings, mode); }
 
   /** Every id WhatsApp may use for this private chat: the phone id and the lid, when the mapping is known. */
   async chatIdsFor(jid) {
@@ -1095,7 +1168,10 @@ Each one is a single word.
     if (this.sock?.groupFetchAllParticipating && (!this._groupsAt || Date.now() - this._groupsAt > 10 * 60e3)) {
       try {
         const all = await this.sock.groupFetchAllParticipating();
-        for (const [jid, meta] of Object.entries(all || {})) if (meta?.subject) this.groupNames.set(jid, meta.subject);
+        for (const [jid, meta] of Object.entries(all || {})) {
+          if (meta?.subject) this.groupNames.set(jid, meta.subject);
+          if (Array.isArray(meta?.participants)) this.groupSizes.set(jid, meta.participants.length);
+        }
         this._groupsAt = Date.now();
       } catch { /* offline: the groups seen so far */ }
     }
@@ -1240,12 +1316,13 @@ Each one is a single word.
 
   /** Switch the chat, under every id it may arrive with, and say so in the control group. */
   async applySwitch({ chatId, ids, name, isGroup }, action) {
-    // One mode per chat: the three sets never hold the same chat.
+    // One mode per chat: the three sets never hold the same chat. An included private chat is on even
+    // where the settings page has private chats off, or only some people picked.
     const all = new Set([...(ids || []), ...(await this.chatIdsFor(chatId))]);
     const include = action === 'include', quiet = action === 'private';
-    if (isGroup) { include ? this.enabled.add(chatId) : this.enabled.delete(chatId); this.saveSet('enabled.json', this.enabled); }
+    for (const id of isGroup ? [chatId] : all) include ? this.enabled.add(id) : this.enabled.delete(id);
     for (const id of all) { action === 'exclude' ? this.muted.add(id) : this.muted.delete(id); quiet ? this.quiet.add(id) : this.quiet.delete(id); }
-    this.saveSet('muted.json', this.muted); this.saveSet('quiet.json', this.quiet);
+    this.saveSet('enabled.json', this.enabled); this.saveSet('muted.json', this.muted); this.saveSet('quiet.json', this.quiet);
     console.log(`${this.tag} ${include ? '🟢 included' : quiet ? '🔒 private' : '🔇 excluded'}: a ${isGroup ? 'group' : 'private chat'}`);
     this.noteCommand(action, `done (${isGroup ? 'a group' : 'a private chat'})`);
     const he = this.ownerLocale() === 'he';
@@ -1324,10 +1401,20 @@ Each one is a single word.
       await this.sendPaced(n.chatId, { text }, { quoted: m }).catch(() => {});
       return true;
     }
+    // settings: a link to the settings page that signs the owner in, good for a day.
+    if (inControl && n.fromMe && !n.hasMedia && lower === 'settings' && !this.ownPosts.has(n.id)) {
+      const url = settingsUrl(this.id, this.manageKey), he = this.ownerLocale() === 'he';
+      this.noteCommand('settings', url ? 'link sent' : 'no site address set');
+      await this.sendPaced(n.chatId, { text: !url
+        ? (he ? '⚙️ לשרת הזה לא הוגדרה כתובת אתר (PUBLIC_URL), ולכן אין קישור לדף ההגדרות.' : "⚙️ This server has no site address set (PUBLIC_URL), so there's no link to the settings page.")
+        : he ? `⚙️ ההגדרות שלך, מה מתומלל ואיפה הטקסט מופיע: ${url}\nהקישור תקף ל-24 שעות ונועד רק לך, לא להעביר אותו הלאה.`
+        : `⚙️ Your settings, what gets transcribed and where the text appears: ${url}\nThe link works for 24 hours and is only for you, so don't forward it.` }, { quoted: m }).catch(() => {});
+      return true;
+    }
     // groups, or groups off / groups mine: what happens in groups nobody switched.
     const grp = /^groups(?:\s*:?\s*(\S+))?$/.exec(lower);
     if (inControl && n.fromMe && !n.hasMedia && grp && !this.ownPosts.has(n.id)) {
-      const want = ['off', 'mine', 'private'].includes(grp[1]) ? grp[1] : null;
+      const want = ['off', 'mine', 'all', 'private'].includes(grp[1]) ? grp[1] : null;
       const changed = want && want !== this.groups;
       if (changed) { this.groups = want; this.persistRecord(); console.log(`${this.tag} 👥 groups → ${want}`); }
       this.noteCommand('groups', changed ? `set to ${want}` : want ? `already ${want}` : grp[1] ? 'not an option' : 'shown');
@@ -1384,6 +1471,69 @@ Each one is a single word.
     const e = { at: Date.now(), cmd, outcome, replied: null };
     this.commands = [...this.commands, e].slice(-30); this.cmdNow = e;
     saveJson(this.f('commands.json'), this.commands);
+  }
+
+  // ---------- the settings page ----------
+  /** A chat's name for the page: the saved or shown name, else its number. */
+  chatLabel(jid) {
+    const alt = this.altIds.get(jid);
+    const name = this.groupNames.get(jid) || (this.savedNames.has(alt) ? this.contactNames.get(alt) : null) || this.contactNames.get(jid) || this.contactNames.get(alt);
+    if (name) return String(name).trim();
+    const pn = [jid, alt].find((id) => id?.endsWith('@s.whatsapp.net'));
+    return pn ? `+${pn.split('@')[0]}` : '…';
+  }
+  /** Everything the page draws: the settings, with names for the picked chats, and whether transcription is on at all. */
+  settingsView() {
+    const section = (k) => ({ ...this.settings[k], some: this.settings[k].some.map((id) => ({ id, name: this.chatLabel(id) })) });
+    return { where: whereOf(this.settings), chats: section('chats'), groups: section('groups'), paused: this.paused, firstNoteAt: this.firstNoteAt || null, groupLink: this.target?.invite ? `https://chat.whatsapp.com/${this.target.invite}` : null };
+  }
+  /**
+   * A change from the page, saved at once. "Only to me" means nothing is posted in any chat, so the
+   * chats included from WhatsApp (text in the chat) move to private mode (text only here) with it.
+   */
+  async updateSettings(patch) {
+    const before = this.settings;
+    this.settings = applyPatch(before, patch);
+    const toMe = (k) => this.settings[k].where === 'me' && before[k].where !== 'me';
+    if (toMe('chats') || toMe('groups')) {
+      let moved = 0;
+      for (const id of [...this.enabled]) {
+        if (!toMe(id.endsWith('@g.us') ? 'groups' : 'chats')) continue;
+        for (const each of await this.chatIdsFor(id)) { this.enabled.delete(each); this.quiet.add(each); }
+        moved++;
+      }
+      if (moved) { this.saveSet('enabled.json', this.enabled); this.saveSet('quiet.json', this.quiet); console.log(`${this.tag} 🔒 ${moved} included chat(s) moved to private mode with "only to me"`); }
+    }
+    this.persistRecord();
+    const d = (k) => { const x = this.settings[k]; return `${x.on ? `${x.who}/${x.where}${x.some.length ? `/${x.some.length} picked` : ''}` : 'off'}`; };
+    console.log(`${this.tag} ⚙️ settings → chats ${d('chats')} · groups ${d('groups')}`);
+    return this.settingsView();
+  }
+  /**
+   * The chats the page lets the owner pick from, as [id, name, hint]: groups with how many are in
+   * them, people with the ones the owner talks to most first. One row per person (phone id over lid).
+   */
+  async settingsDirectory(kind) {
+    if (kind === 'groups') {
+      await this.switchDirectory();
+      return [...this.groupNames].filter(([jid, name]) => name && jid !== this.target?.jid).map(([jid, name]) => [jid, String(name).trim(), this.groupSizes.get(jid) || 0])
+        .sort((a, b) => a[1].localeCompare(b[1]));
+    }
+    const rows = new Map();
+    for (const [jid, name] of this.contactNames) {
+      if (!name || this.isSelfChat(jid) || jid.endsWith('@g.us') || !/@(s\.whatsapp\.net|lid)$/.test(jid)) continue;
+      const alt = this.altIds.get(jid), id = jid.endsWith('@lid') && alt ? alt : jid;
+      if (rows.has(id)) continue;
+      rows.set(id, [id, this.chatLabel(id), this.savedNames.has(jid) || this.savedNames.has(alt) ? 1 : 0, (this.activity.get(jid) || 0) + (this.activity.get(alt) || 0)]);
+    }
+    return [...rows.values()].sort((a, b) => b[3] - a[3] || b[2] - a[2] || a[1].localeCompare(b[1])).slice(0, 2000).map(([id, name, saved]) => [id, name, saved]);
+  }
+  /** A number typed into the page's search: the private chat it belongs to, if WhatsApp knows one. */
+  async settingsNumber(q) {
+    const [o] = await this.switchByNumber(String(q || '').slice(0, 40));
+    if (!o) return null;
+    const id = o.ids.find((x) => x.endsWith('@s.whatsapp.net')) || o.chatId;
+    return [id, this.chatLabel(id), 0];
   }
 
   // ---------- sending (paced, one queue per account) ----------

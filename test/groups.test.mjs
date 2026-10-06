@@ -27,9 +27,10 @@ const node = { mediaKey: 'AAAA', directPath: '/v/t62.7117-24/abc.enc?ccb=11-4&oh
 const rec = (t, chatId, fromMe) => { const id = `V${++seq}`; return t.onMessage({ key: { remoteJid: chatId, fromMe, id, ...(chatId.endsWith('@g.us') && !fromMe ? { participant: '777@s.whatsapp.net' } : {}) }, pushName: 'Someone', message: { audioMessage: { ...node, fileSha256: Buffer.from(id) } } }, t.sock); };
 const say = (t, body) => { const key = { remoteJid: CONTROL, fromMe: true, id: `T${++seq}` }; const message = { conversation: body }; return t.handleCommand({ key, message }, t.normalize({ key, message }), 'Ramble'); };
 
-test('a new account starts with groups off; an account from before the setting keeps its own notes in groups', () => {
+test('a new account starts with its own notes in groups and everyone\'s in private chats; an account from before the setting keeps its own notes in groups', () => {
   const fresh = registry.create({ start: false });
-  assert.equal(fresh.groups, 'off');
+  assert.equal(fresh.groups, 'mine');
+  assert.deepEqual({ ...fresh.settings.chats }, { on: true, who: 'all', where: 'chat', some: [] });
   assert.equal(tenant().groups, 'mine', 'no setting on record: what it had before');
 });
 

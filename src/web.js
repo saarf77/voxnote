@@ -27,6 +27,7 @@ import { speechPerMinute } from './cost.js';
 import * as visitors from './visitors.js';
 import * as health from './health.js';
 import { HE, landingHe, howHe, privacyHe } from './site-he.js';
+import { checkSettingsToken } from './settings.js';
 
 const REPO_URL = process.env.REPO_URL || 'https://github.com/tomer-van-cohen/ramble';
 const TAGLINE = 'Ramble, baby. Talk into WhatsApp however it comes out; every voice note shows up as clean text right under it.';
@@ -114,7 +115,7 @@ const RTL_CSS = `[dir=rtl] body{font-family:Geist,system-ui,-apple-system,"Segoe
 [dir=rtl] .mini small{font-family:inherit;letter-spacing:0;font-size:13px}[dir=rtl] .tel input::placeholder{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;letter-spacing:0}
 .tel,.code{direction:ltr}`;
 
-function page(res, title, body, { poll = null, wide = false, nav = '' } = {}) {
+function page(res, title, body, { poll = null, wide = false, nav = '', bare = false } = {}) {
   const nonce = res.locals.nonce;
   const he = res.locals.lang === 'he', TAG = he ? TAGLINE_HE : TAGLINE;
   return `<!doctype html><html lang="${he ? 'he' : 'en'}" dir="${he ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -239,7 +240,7 @@ table{border-collapse:collapse;font-size:14px;white-space:nowrap}th,td{padding:4
 .foot{flex-direction:row;align-items:center;justify-content:space-between}
 }
 ${he ? RTL_CSS : ''}
-</style></head><body><header class="nav wrap${wide ? '' : ' narrow'}">${mark}${nav}</header><main${wide ? '' : ' class="wrap narrow"'}>${body}</main>${poll ? `<script nonce="${nonce}">document.addEventListener('DOMContentLoaded',()=>{${poll}\n});</script>` : ''}</body></html>`;
+</style></head><body>${bare ? '' : `<header class="nav wrap${wide ? '' : ' narrow'}">${mark}${nav}</header>`}<main${wide ? '' : ' class="wrap narrow"'}>${body}</main>${poll ? `<script nonce="${nonce}">document.addEventListener('DOMContentLoaded',()=>{${poll}\n});</script>` : ''}</body></html>`;
 }
 
 // ---------- who signed up (coarse, for the admin page) ----------
@@ -568,7 +569,7 @@ export function createWebApp() {
       'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     });
     if (req.secure) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    if (/^\/(link|api|admin|unlink)/.test(req.path)) res.set('Cache-Control', 'no-store');
+    if (/^\/(link|api|admin|unlink|settings)/.test(req.path)) res.set('Cache-Control', 'no-store');
     res.locals.lang = siteLang(req);
     res.set('Vary', 'Accept-Language, Cookie');
     // The footer's language link: remember the choice, then show the same page without the query.
@@ -696,17 +697,18 @@ ${footFor(req, res)}`, { wide: true, nav: NAV, poll: LANDING_JS }));
 </ol></div></section>
 <section class="band"><div class="wrap"><h2>Then it runs itself.</h2>
 <div class="facts plain">
-<p><b>Your voice notes.</b> Every one you send in a private chat gets its text right under it. In groups, only where you say so.</p>
+<p><b>Your voice notes.</b> Every one you send gets its text right under it, in private chats and in groups.</p>
 <p><b>Private chats.</b> Voice notes and videos people send you get their text too.</p>
 <p><b>Clean text.</b> Every word they said, with the ums gone and the misheard words fixed.</p>
 <p><b>Hands off.</b> View-once media is never touched. In disappearing chats, the text disappears with the recording.</p>
 <p><b>Any language.</b> It works out which one on its own.</p>
+<p><b>Your call.</b> Write settings in your ${NAME} group to choose what gets transcribed, whose, and whether the text appears in the chat or only to you.</p>
 ${DAILY_MINUTES_CAP ? `<p><b>A daily limit.</b> ${DAILY_MINUTES_CAP} minutes of audio a day.</p>` : ''}
 </div></div></section>
 <section class="band"><div class="wrap"><h2>When you want more.</h2><p class="intro">You run ${NAME} by talking to it, in WhatsApp. Write help in your ${NAME} group for the full list.</p>
 <div class="asks">
-<div class="ask"><div><h3>Turn on a group.</h3><p>Groups are off until you say so, your own voice notes included. Write include and the group&#39;s name in your ${NAME} group, or forward one voice note from it and reply include. Or write groups mine to transcribe just your own voice notes, in every group. Nothing is ever posted in a group to control it.</p></div>
-${mini(`${NAME} group`, `${voice('0:32', true)}<div class="bot"><b>Family</b> is not transcribed. Reply <b>include</b> to start.</div><div class="me">${quote(NAME, 'Family is not transcribed. Reply include to start.')}include</div><div class="bot">Transcribe <b>Family (group)</b>? Reply <b>yes</b> to include it.</div>`)}</div>
+<div class="ask"><div><h3>Everyone in a group.</h3><p>In groups, only your own voice notes get their text, until you say otherwise. Write include and the group&#39;s name in your ${NAME} group, or forward one voice note from it and reply include, and every voice note there gets its text. Or choose for all your groups at once on the settings page. Nothing is ever posted in a group to control it.</p></div>
+${mini(`${NAME} group`, `${voice('0:32', true)}<div class="bot"><b>Family</b>: only your own voice notes are transcribed. Reply <b>include</b> for everyone&#39;s.</div><div class="me">${quote(NAME, 'Family: only your own voice notes are transcribed.')}include</div><div class="bot">Transcribe <b>Family (group)</b>? Reply <b>yes</b> to include it.</div>`)}</div>
 <div class="ask"><div><h3>Keep it private.</h3><p>Write private and a chat&#39;s name. Every recording in it, yours included, is transcribed into your ${NAME} group only. Nothing is posted in the chat.</p></div>
 ${mini(`${NAME} group`, `<div class="me">private Book club</div><div class="bot">Transcribe <b>Book club (group)</b> privately? Reply <b>yes</b> to switch.</div><div class="me">yes</div><div class="bot"><b>Dana</b> in <b>Book club</b><br>I&#39;ll be there in twenty minutes, start without me.</div>`)}</div>
 <div class="ask"><div><h3>Take a break.</h3><p>Write pause in your ${NAME} group, and nothing is transcribed anywhere until you write resume.</p></div>
@@ -891,10 +893,12 @@ document.getElementById('unlink').addEventListener('submit',e=>{if(!confirm(S.co
 let wasLinked=null;
 function confetti(){if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;const c=document.getElementById('fx'),x=c.getContext('2d');c.hidden=false;const W=c.width=innerWidth,H=c.height=innerHeight;const cols=['#25d366','#121212','#d9fdd3','#faf7f2','#1fa855'];const ps=Array.from({length:160},()=>({x:W/2+(Math.random()-.5)*W*.3,y:H*.35,vx:(Math.random()-.5)*14,vy:-Math.random()*16-4,r:Math.random()*Math.PI,vr:(Math.random()-.5)*.3,w:6+Math.random()*6,h:8+Math.random()*10,c:cols[Math.random()*cols.length|0]}));const t0=performance.now();(function f(t){const k=(t-t0)/1000;x.clearRect(0,0,W,H);for(const p of ps){p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.vx*=.99;p.r+=p.vr;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.globalAlpha=Math.max(0,1-Math.max(0,k-2)/1);x.fillStyle=p.c;x.fillRect(-p.w/2,-p.h/2,p.w,p.h);x.restore();}if(k<3.2)requestAnimationFrame(f);else{c.hidden=true;}})(t0);}
 let timer=null;
-async function tick(){clearTimeout(timer);try{const r=await fetch('/api/link/${t.id}',{credentials:'same-origin'});if(r.ok){render(await r.json());}}catch(e){}timer=setTimeout(tick,2500)}
+async function tick(){clearTimeout(timer);let s=null;try{const r=await fetch('/api/link/${t.id}',{credentials:'same-origin'});if(r.ok)s=await r.json();}catch(e){}if(s&&s.mode==='connected'&&!s.needsManualGroup){render(s);return;}timer=setTimeout(tick,2500);if(s)render(s);}
 function render(s){
  document.body.classList.toggle('on',!!s.linkedAt);
  document.body.dataset.code=s.pairByCode?'1':'';
+ // Linked: the settings page takes over, with the welcome if it happened just now.
+ if(s.mode==='connected'&&!s.needsManualGroup){clearTimeout(timer);location.replace('/settings/${t.id}'+(wasLinked===false?'?welcome=1':''));return;}
  if(s.mode==='connected'&&wasLinked===false)confetti();
  wasLinked=s.mode==='connected';
  // The same picture is not redrawn: a number being typed must survive the next poll.
@@ -934,6 +938,185 @@ tick();` }));
     if (isHe(res)) return res.type('html').send(page(res, 'נעלם', `${HE.gone(esc(PRODUCT_NAME), r?.loggedOut)}<a class="back" href="/">${HE.again}</a>`));
     res.type('html').send(page(res, 'Unlinked', `<h1 class="small">Gone.</h1><p>Nothing of yours is left here.${r?.loggedOut ? ' The device was logged out of your WhatsApp.' : ' WhatsApp did not confirm the logout, so remove the device yourself under <b>WhatsApp → Linked devices</b>.'} The <b>${esc(PRODUCT_NAME)}</b> group stays in your WhatsApp; delete it whenever you like.</p><a class="back" href="/">Start over</a>`));
   });
+
+  // ---------- settings ----------
+  // What is transcribed and where the text goes (settings.js). Right after linking it is the welcome, with a
+  // button into WhatsApp; later the "settings" command sends a link to it. Every change is saved at once.
+  const SETTINGS_EN = {
+    title: 'Settings', on: 'is on', off: 'is off', saved: 'Saved', failed: 'Not saved', done: 'Done',
+    whereTitle: 'Where transcripts appear', chat: 'In the chat', me: 'Only to me',
+    whereChat: 'Right under each voice note, so everyone in the chat can read it.', whereMe: 'In your {p} group. Nothing is posted in your chats.',
+    whereMixed: 'Right now: private chats in the chat, groups only to you. Picking one here sets both.',
+    whatTitle: 'What to transcribe', whoTitle: 'Which voice notes to transcribe', mine: 'Only mine', all: 'Everyone&#39;s', toggle: 'Transcribe', remove: 'Remove',
+    chats: { title: 'Private chats', all: 'All private chats', some: 'Only people you chose', pick: 'Pick people', change: 'Change', back: 'Back to all private chats', sheet: 'Choose people', ph: 'Search a name or a number', note: 'Only the people you tick are transcribed. Not here? Type their number.' },
+    groups: { title: 'Groups', all: 'All groups', some: 'Only groups you chose', pick: 'Pick groups', change: 'Change', back: 'Back to all groups', sheet: 'Choose groups', ph: 'Search your groups', note: 'Only the groups you tick are transcribed.' },
+    members: '{n} members', contact: 'Contact', loading: 'Loading…', none: 'Nothing found.',
+    paused: 'Transcription is paused. To start again, write <b>resume</b> in your {p} group.',
+    foot: '<b>To get back here,</b> write <b>settings</b> in your {p} group.',
+    banner: 'You&#39;re in. WhatsApp is linked.', cta: 'Send yourself a voice note',
+  };
+  const SETTINGS_CSS = `.st{display:flex;flex-direction:column;gap:9px;padding:10px 0 24px}.secs{display:flex;flex-direction:column;gap:9px}.st.cta-on{padding-bottom:92px}
+.sthead{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:46px}
+.sthead h1{display:flex;align-items:center;gap:11px;font-size:30px;line-height:1;letter-spacing:-.03em;white-space:nowrap}.sthead h1 svg{width:38px;height:38px;flex:none}
+.sthead h1 span{color:var(--ink)}.sthead em{font-style:normal;color:#1fa855}.sthead em.off{color:#8c877c}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;background:var(--ink);color:#fff;font-size:13px;font-weight:600;flex:none}.chip.bad{background:var(--danger)}.chip[hidden]{display:none}
+.box{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.box.where{background:#eaf6ec;border-color:#c9e6cf}.box h2{font-size:20px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+.seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;background:#efeae0;border-radius:13px;padding:3px}.where .seg{background:rgba(31,168,85,.12)}
+.seg button{min-height:40px;border:0;border-radius:10px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;color:var(--ink);background:transparent}
+.seg button[aria-pressed=true]{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.st .note{font-size:13px;color:#4f6656}.st .pause{font-size:14px;color:var(--ink);background:#fff3d6;border-radius:14px;padding:10px 14px}
+.st .label{margin:4px 2px -1px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}[dir=rtl] .st .label{letter-spacing:0;text-transform:none}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sw{flex:none;position:relative;width:52px;height:32px;border-radius:999px;border:0;padding:0;cursor:pointer;background:#d6d1c6}.sw[aria-pressed=true]{background:var(--green)}
+.sw span{position:absolute;top:3px;inset-inline-start:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:inset-inline-start .15s}.sw[aria-pressed=true] span{inset-inline-start:23px}
+.in{display:flex;flex-direction:column;gap:6px}.in .q{font-size:13px;font-weight:600;color:var(--mute)}
+.scope{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px;border-top:1px solid #efeae0;padding-top:4px}
+.scope>span{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:600}.scope svg{flex:none}
+.lnk{min-height:36px;padding:0 2px;border:0;background:transparent;font:inherit;font-size:14px;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer;flex:none}.lnk.mute{color:var(--mute);align-self:flex-start}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips>span{display:inline-flex;align-items:center;gap:8px;height:34px;max-width:100%;padding-inline:12px 5px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font-size:14px;font-weight:600}
+.chips>span>i{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chips button{width:26px;height:26px;border-radius:50%;border:0;background:#ece7dd;display:grid;place-items:center;cursor:pointer;padding:0;flex:none}
+.stfoot{margin-top:4px;color:var(--mute);font-size:13px}.stfoot b{font-weight:600}
+.ctabar{position:fixed;left:0;right:0;bottom:0;z-index:3;background:var(--bg);border-top:1px solid var(--line);padding:8px 18px calc(10px + env(safe-area-inset-bottom))}
+.ctabar a{display:flex;align-items:center;justify-content:center;gap:10px;max-width:464px;margin:0 auto;min-height:48px;border-radius:999px;background:var(--green);color:var(--ink);font-weight:600;font-size:17px;text-decoration:none}
+.toast{position:fixed;inset:0;z-index:8;display:grid;place-items:center;background:rgba(250,247,242,.82);animation:fadeout 2.9s ease forwards;pointer-events:none}
+.toast>div{display:flex;flex-direction:column;align-items:center;gap:14px;max-width:300px;padding:26px 30px;border-radius:26px;background:var(--ink);color:#fff;box-shadow:0 18px 50px rgba(0,0,0,.25);animation:pop .55s cubic-bezier(.2,1.4,.4,1) both}
+.toast i{width:54px;height:54px;border-radius:50%;background:var(--green);display:grid;place-items:center}
+.toast b,main.narrow .toast b{color:#fff;font-family:var(--disp);font-weight:700;font-size:22px;line-height:1.2;text-align:center;letter-spacing:-.01em}
+@keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}@keyframes fadeout{0%,82%{opacity:1}100%{opacity:0;visibility:hidden}}
+.sheet{position:fixed;inset:0;z-index:6;background:rgba(18,18,18,.45);display:flex;flex-direction:column;justify-content:flex-end}.sheet[hidden]{display:none}
+.panel{width:100%;max-width:500px;max-height:88vh;margin:0 auto;background:var(--bg);border-radius:24px 24px 0 0;padding:10px 18px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+.grab{align-self:center;width:40px;height:5px;border-radius:3px;background:#d6d1c6}.panel h3{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.donebtn{min-height:44px;padding:0 16px;border:0;border-radius:999px;background:var(--green);font:inherit;font-size:15px;font-weight:600;color:var(--ink);cursor:pointer}
+.search{display:flex;align-items:center;gap:10px;height:50px;margin:0;padding:0 14px;border-radius:14px;background:#fff;border:1.5px solid var(--ink)}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:16px;color:var(--ink)}
+.list{flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column}.list p{color:var(--mute);font-size:15px;padding:12px 4px}
+.pick{display:flex;align-items:center;gap:12px;width:100%;min-height:54px;padding:5px 4px;border:0;border-bottom:1px solid var(--line);background:transparent;font:inherit;color:var(--ink);cursor:pointer;text-align:start}
+.pick .av{flex:none;width:36px;height:36px;border-radius:50%;color:#fff;display:grid;place-items:center;font-family:var(--disp);font-weight:700;font-size:15px}
+.c0{background:#3d6b55}.c1{background:#8a5a44}.c2{background:#4b5a8a}.c3{background:#7a4f7a}.c4{background:#5a6b3d}.c5{background:#8a6a2e}
+.nm{flex:1;min-width:0;display:flex;flex-direction:column}.nm b{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nm span{color:var(--mute);font-size:13px}
+.ck{flex:none;width:24px;height:24px;box-sizing:border-box;border-radius:7px;display:grid;place-items:center;background:#fff;border:2px solid #8c877c}.pick[aria-pressed=true] .ck{background:var(--ink);border-color:var(--ink)}
+.panel .note{color:var(--mute);font-size:13px}`;
+  // The page's script: draws the settings from the state, saves each change as it is made.
+  const SETTINGS_JS = `const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fill=(x,k,v)=>String(x).split('{'+k+'}').join(v);
+const CHECK='<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="8" fill="#d9fdd3"/><path d="M4.5 8.3l2.2 2.2L11.5 5.7" fill="none" stroke="#1fa855" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const TICK='<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const X='<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="#5c5a55" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const $=id=>document.getElementById(id);
+const dirs={chats:null,groups:null};let sheet=null,q='',extra=null,flashT=null;
+function live(){return !st.paused&&(st.chats.on||st.groups.on);}
+function section(k){const v=st[k],w=S[k],some=v.some.length>0;
+ let h='<section class="box"><div class="top"><h2>'+w.title+'</h2><button type="button" class="sw" data-act="toggle" data-k="'+k+'" aria-pressed="'+v.on+'" aria-label="'+esc(S.toggle+' '+w.title)+'"><span></span></button></div>';
+ if(v.on){h+='<div class="in">';
+  if(v.where==='chat')h+='<p class="q">'+S.whoTitle+'</p><div class="seg">'+['mine','all'].map(id=>'<button type="button" data-act="who" data-k="'+k+'" data-v="'+id+'" aria-pressed="'+(v.who===id)+'">'+S[id]+'</button>').join('')+'</div>';
+  h+='<div class="scope"><span>'+CHECK+(some?w.some:w.all)+'</span><button type="button" class="lnk" data-act="pick" data-k="'+k+'">'+(some?w.change:w.pick)+'</button></div>';
+  if(some)h+='<div class="chips">'+v.some.map(c=>'<span><i>'+esc(c.name)+'</i><button type="button" data-act="unpick" data-k="'+k+'" data-id="'+esc(c.id)+'" aria-label="'+esc(S.remove+' '+c.name)+'">'+X+'</button></span>').join('')+'</div><button type="button" class="lnk mute" data-act="all" data-k="'+k+'">'+w.back+'</button>';
+  h+='</div>';}
+ return h+'</section>';}
+function render(){
+ const on=live();$('status').textContent=on?S.on:S.off;$('status').className=on?'':'off';
+ $('where').innerHTML=['chat','me'].map(id=>'<button type="button" data-act="where" data-v="'+id+'" aria-pressed="'+(st.where===id)+'">'+S[id]+'</button>').join('');
+ $('whereNote').textContent=fill(st.where==='me'?S.whereMe:st.where==='chat'?S.whereChat:S.whereMixed,'p',P);
+ $('pause').hidden=!st.paused;
+ $('secs').innerHTML=section('chats')+section('groups');
+ const a=$('cta');if(a&&st.groupLink)a.href=st.groupLink;
+ if(sheet)list();}
+function flash(ok){const c=$('saved');c.hidden=false;c.className=ok?'chip':'chip bad';c.lastChild.textContent=ok?S.saved:S.failed;clearTimeout(flashT);flashT=setTimeout(()=>{c.hidden=true},ok?1800:4000);}
+let chain=Promise.resolve();
+function save(patch){
+ if(patch.where){st.where=patch.where;for(const k of ['chats','groups'])st[k].where=patch.where;}
+ const body={...(patch.where?{where:patch.where}:{})};
+ for(const k of ['chats','groups'])if(patch[k]){Object.assign(st[k],patch[k]);body[k]={...patch[k]};if(patch[k].some)body[k].some=patch[k].some.map(c=>c.id);}
+ render();
+ chain=chain.then(()=>fetch('/api/settings/'+ID,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(body)}))
+  .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(v=>{st=v;render();flash(true);}).catch(()=>flash(false));}
+const avatar=n=>{let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))%997;return 'c'+(h%6);};
+async function load(k){if(dirs[k])return;try{const r=await fetch('/api/settings/'+ID+'/chats?kind='+k,{credentials:'same-origin'});dirs[k]=r.ok?(await r.json()).rows:[];}catch(e){dirs[k]=[];}if(sheet===k)list();}
+function hint(k,row){if(k==='groups')return row[2]?fill(S.members,'n',row[2]):'';if(row[2])return S.contact;return /@s\\.whatsapp\\.net$/.test(row[0])&&row[1]!=='+'+row[0].split('@')[0]?'+'+row[0].split('@')[0]:'';}
+function list(){const k=sheet,el=$('list');if(!dirs[k]){el.innerHTML='<p>'+S.loading+'</p>';return;}
+ const chosen=new Map(st[k].some.map(c=>[c.id,c.name]));const needle=q.trim().toLowerCase(),digits=q.replace(/\\D/g,'');
+ const match=r=>!needle||r[1].toLowerCase().includes(needle)||(digits.length>=3&&r[0].split('@')[0].includes(digits));
+ let rows=dirs[k].filter(match);
+ if(!needle){const picked=[...chosen].filter(([id])=>!dirs[k].some(r=>r[0]===id)).map(([id,name])=>[id,name,0]);rows=[...picked,...rows].sort((a,b)=>chosen.has(b[0])-chosen.has(a[0]));}
+ if(extra&&extra[0]&&!rows.some(r=>r[0]===extra[0]))rows.unshift(extra);
+ el.innerHTML=rows.length?rows.slice(0,120).map(r=>{const on=chosen.has(r[0]),h=hint(k,r);return '<button type="button" class="pick" data-act="flip" data-id="'+esc(r[0])+'" data-name="'+esc(r[1])+'" aria-pressed="'+on+'"><span class="av '+avatar(r[1])+'">'+esc(Array.from(r[1].replace(/^\\+/,''))[0]||'?')+'</span><span class="nm"><b>'+esc(r[1])+'</b>'+(h?'<span><bdi>'+esc(h)+'</bdi></span>':'')+'</span><span class="ck">'+(on?TICK:'')+'</span></button>';}).join(''):'<p>'+S.none+'</p>';}
+let numT=null;
+function lookNumber(){clearTimeout(numT);extra=null;const d=q.replace(/\\D/g,'');if(sheet!=='chats'||d.length<7)return;numT=setTimeout(async()=>{try{const r=await fetch('/api/settings/'+ID+'/number?q='+encodeURIComponent(q),{credentials:'same-origin'});const j=r.ok?await r.json():null;if(j&&j.row&&sheet==='chats'){extra=j.row;list();}}catch(e){}},500);}
+function open(k){sheet=k;q='';extra=null;$('shTitle').textContent=S[k].sheet;$('q').value='';$('q').placeholder=S[k].ph;$('q').setAttribute('aria-label',S[k].ph);$('shNote').textContent=S[k].note;$('sheet').hidden=false;list();load(k);}
+function close(){sheet=null;$('sheet').hidden=true;}
+document.addEventListener('click',e=>{
+ if(e.target.id==='sheet'){close();return;}
+ const b=e.target.closest('[data-act]');if(!b)return;const k=b.dataset.k,act=b.dataset.act;
+ if(act==='where')save({where:b.dataset.v});
+ else if(act==='toggle')save({[k]:{on:!st[k].on}});
+ else if(act==='who')save({[k]:{who:b.dataset.v}});
+ else if(act==='pick')open(k);
+ else if(act==='all')save({[k]:{some:[]}});
+ else if(act==='unpick')save({[k]:{some:st[k].some.filter(c=>c.id!==b.dataset.id)}});
+ else if(act==='close')close();
+ else if(act==='flip'){const id=b.dataset.id,s=st[sheet].some;save({[sheet]:{some:s.some(c=>c.id===id)?s.filter(c=>c.id!==id):[...s,{id,name:b.dataset.name}]}});}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sheet)close();});
+$('q').addEventListener('input',e=>{q=e.target.value;lookNumber();list();});
+render();
+if(location.search)history.replaceState(null,'',location.pathname);
+// Right after linking the group may still be on its way: ask for its link a few times.
+if($('cta')&&!st.groupLink){let n=0;(async function ask(){try{const r=await fetch('/api/settings/'+ID+'/group-link',{credentials:'same-origin'});const j=r.ok?await r.json():null;if(j&&j.groupLink){st.groupLink=j.groupLink;$('cta').href=j.groupLink;return;}}catch(e){}if(++n<12)setTimeout(ask,4000);})();}
+if($('toast')){const c=$('fx'),x=c.getContext('2d');if(!matchMedia('(prefers-reduced-motion: reduce)').matches){c.hidden=false;const W=c.width=innerWidth,H=c.height=innerHeight;const cols=['#25d366','#121212','#d9fdd3','#faf7f2','#1fa855'];const ps=Array.from({length:160},()=>({x:W/2+(Math.random()-.5)*W*.3,y:H*.35,vx:(Math.random()-.5)*14,vy:-Math.random()*16-4,r:Math.random()*Math.PI,vr:(Math.random()-.5)*.3,w:6+Math.random()*6,h:8+Math.random()*10,c:cols[Math.random()*cols.length|0]}));const t0=performance.now();(function f(t){const k=(t-t0)/1000;x.clearRect(0,0,W,H);for(const p of ps){p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.vx*=.99;p.r+=p.vr;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.globalAlpha=Math.max(0,1-Math.max(0,k-2)/1);x.fillStyle=p.c;x.fillRect(-p.w/2,-p.h/2,p.w,p.h);x.restore();}if(k<3.2)requestAnimationFrame(f);else c.hidden=true;})(t0);}
+ setTimeout(()=>$('toast').remove(),2900);}`;
+  const MIC_SVG = '<svg width="16" height="20" viewBox="0 0 16 20" aria-hidden="true"><rect x="4.5" y="1" width="7" height="12" rx="3.5" fill="#121212"/><path d="M1.5 9.5a6.5 6.5 0 0 0 13 0M8 16v3" fill="none" stroke="#121212" stroke-width="2" stroke-linecap="round"/></svg>';
+  const SEARCH_SVG = '<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="6" fill="none" stroke="#5c5a55" stroke-width="2"/><path d="M13 13l5 5" stroke="#5c5a55" stroke-width="2" stroke-linecap="round"/></svg>';
+  function settingsPage(req, res, t, { welcome = false } = {}) {
+    const he = isHe(res), S = he ? HE.settings : SETTINGS_EN, nonce = res.locals.nonce;
+    const view = t.settingsView();
+    // Until the first voice note, the page leads into WhatsApp: on a phone the group's link opens the app.
+    const onPhone = /Mobile|Android|iPhone|iPad|iPod/i.test(req.get('user-agent') || '');
+    const cta = welcome || !view.firstNoteAt;
+    const fallback = onPhone ? 'whatsapp://' : 'https://web.whatsapp.com/';
+    const fillP = (x) => x.split('{p}').join(esc(PRODUCT_NAME));
+    return page(res, `${PRODUCT_NAME} · ${S.title}`, `<style nonce="${nonce}">${SETTINGS_CSS}</style>
+<canvas id="fx" hidden aria-hidden="true"></canvas>
+<div class="st${cta ? ' cta-on' : ''}">
+<div class="sthead"><h1>${LOGO_SVG}<span>${esc(PRODUCT_NAME)} <em id="status">${S.on}</em></span></h1><span class="chip" id="saved" role="status" hidden><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${S.saved}</span></span></div>
+<p class="pause" id="pause" hidden>${fillP(S.paused)}</p>
+<section class="box where"><h2>${S.whereTitle}</h2><div class="seg" id="where"></div><p class="note" id="whereNote"></p></section>
+<p class="label">${S.whatTitle}</p>
+<div id="secs" class="secs"></div>
+<p class="stfoot">${fillP(S.foot)}</p>
+</div>
+${cta ? `<div class="ctabar"><a id="cta" href="${esc(view.groupLink || fallback)}">${MIC_SVG}${S.cta}</a></div>` : ''}
+${welcome ? `<div class="toast" id="toast" role="status"><div><i><svg width="26" height="26" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="#121212" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></i><b>${S.banner}</b></div></div>` : ''}
+<div class="sheet" id="sheet" hidden><div class="panel" role="dialog" aria-modal="true" aria-labelledby="shTitle"><span class="grab"></span>
+<div class="top"><h3 id="shTitle"></h3><button type="button" class="donebtn" data-act="close">${S.done}</button></div>
+<label class="search">${SEARCH_SVG}<input type="search" id="q" autocomplete="off" enterkeyhint="search"></label>
+<div class="list" id="list"></div><p class="note" id="shNote"></p></div></div>`, { bare: true, poll: `const S=${JSON.stringify(S)};const P=${JSON.stringify(PRODUCT_NAME)};const ID=${JSON.stringify(t.id)};let st=${JSON.stringify(view).replace(/</g, '\\u003c')};\n${SETTINGS_JS}` });
+  }
+  app.get('/settings/:id', (req, res) => {
+    // A link from the "settings" command signs its holder in, then disappears from the address bar.
+    if (req.query.t != null) {
+      const id = String(req.params.id || ''), t = ID_RE.test(id) ? registry.get(id) : null;
+      if (t && checkSettingsToken(t.id, t.manageKey, String(req.query.t))) { setSession(req, res, t); return res.redirect(303, `/settings/${t.id}`); }
+      const fillP = ([a, b]) => [a, b.split('{p}').join(esc(PRODUCT_NAME))];
+      return res.status(404).type('html').send(small(res, fillP(['This link has expired', 'Write <b>settings</b> in your {p} group for a fresh one.']), fillP(HE.expired)));
+    }
+    const t = auth(req, res); if (!t) return;
+    if (!t.linkedAt) return res.redirect(303, `/link/${t.id}`);
+    res.type('html').send(settingsPage(req, res, t, { welcome: req.query.welcome === '1' }));
+  });
+  app.get('/api/settings/:id', (req, res) => { const t = auth(req, res); if (t) res.json(t.settingsView()); });
+  app.post('/api/settings/:id', express.json({ limit: '32kb' }), async (req, res) => {
+    const t = auth(req, res); if (!t) return;
+    if (!req.body || typeof req.body !== 'object') return res.status(400).json({ error: 'bad request' });
+    res.json(await t.updateSettings(req.body));
+  });
+  app.get('/api/settings/:id/chats', async (req, res) => {
+    const t = auth(req, res); if (!t) return;
+    res.json({ rows: await t.settingsDirectory(req.query.kind === 'groups' ? 'groups' : 'chats') });
+  });
+  app.get('/api/settings/:id/number', async (req, res) => { const t = auth(req, res); if (t) res.json({ row: await t.settingsNumber(req.query.q) }); });
+  app.get('/api/settings/:id/group-link', async (req, res) => { const t = auth(req, res); if (t) res.json({ groupLink: await t.groupLink() }); });
 
   // ---------- admin (health only; support endpoints below) ----------
   function adminAuth(req, res, next) {
